@@ -76,6 +76,15 @@ check(!empty($rollback_ok['attempted']) && $rollback_ok['ok'] === true, 'rollbac
 $GLOBALS['review_mock_undo_result'] = array('product 1 no longer exists');
 $rollback_failed = hsm_review_rollback_partial('ai-hand/product-upsert');
 check($rollback_failed['ok'] === false, 'rollback must not report success when an undo entry could not be restored');
+$GLOBALS['review_mock_undo_result'] = array(false);
+$rollback_false = hsm_review_rollback_partial('ai-hand/product-upsert');
+check($rollback_false['ok'] === false, 'false rollback result must not be treated as a successful restoration message');
+$GLOBALS['review_mock_undo_result'] = array();
+$rollback_missing = hsm_review_rollback_partial('ai-hand/product-upsert');
+check($rollback_missing['ok'] === false, 'missing rollback result must not be treated as successful restoration');
+$GLOBALS['review_mock_undo_result'] = array('restored product 1', 'unexpected extra result');
+$rollback_extra = hsm_review_rollback_partial('ai-hand/product-upsert');
+check($rollback_extra['ok'] === false, 'unexpected extra rollback results must not be treated as verified success');
 $GLOBALS['review_mock_undo_result'] = array(new ReviewTestWpError());
 $rollback_wp_error = hsm_review_rollback_partial('ai-hand/product-upsert');
 check($rollback_wp_error['ok'] === false && $rollback_wp_error['details'][0] === 'restore failed', 'WP_Error rollback details must be marked failed and normalized for safe admin rendering');
