@@ -126,8 +126,13 @@ hsm_ability( 'store-settings', array(
 			}
 			$clean[ $k ] = $v;
 		}
-		if ( $risky ) {
-			hsm_confirm( $in, 'Changing store-critical settings: ' . implode( ', ', array_keys( $risky ) ), $risky );
+		if ( $clean ) {
+			$changes = array();
+			foreach ( $clean as $k => $v ) {
+				$changes[ $k ] = array( 'from' => get_option( $map[ $k ] ), 'to' => $v );
+			}
+			$reason = $risky ? 'Changing store-critical settings: ' . implode( ', ', array_keys( $risky ) ) : 'Update store settings: ' . implode( ', ', array_keys( $clean ) );
+			hsm_confirm( $in, $reason, $changes );
 		}
 		foreach ( $clean as $k => $v ) {
 			hsm_undo_add( array( 'type' => 'option', 'name' => $map[ $k ], 'old' => get_option( $map[ $k ], null ) ) );
@@ -924,6 +929,8 @@ hsm_ability( 'taxonomy-manage', array(
 			$args['parent'] = is_numeric( $in['parent'] ) ? (int) $in['parent'] : ( hsm_terms( array( $in['parent'] ), $tax )[0] ?? 0 );
 		}
 		$id = $in['id'] ?? ( get_term_by( 'name', $in['name'] ?? '', $tax )->term_id ?? 0 );
+		$existing_term = $id ? get_term( (int) $id, $tax ) : null;
+		hsm_confirm( $in, ( $existing_term && ! is_wp_error( $existing_term ) ? 'Update ' . $tax . ' term "' . $existing_term->name . '"' : 'Create ' . $tax . ' term "' . ( $in['name'] ?? '' ) . '"' ), array( 'taxonomy' => $tax, 'before' => $existing_term && ! is_wp_error( $existing_term ) ? array( 'name' => $existing_term->name, 'slug' => $existing_term->slug, 'description' => $existing_term->description, 'parent' => $existing_term->parent ) : null, 'after' => $in ) );
 		if ( $id ) {
 			isset( $in['name'] ) && $args['name'] = $in['name'];
 			$r = wp_update_term( (int) $id, $tax, $args );
@@ -1030,9 +1037,8 @@ hsm_ability( 'coupon-manage', array(
 		if ( ! empty( $in['free_shipping'] ) && empty( $in['minimum_amount'] ) ) {
 			$why[] = 'free shipping with no minimum order';
 		}
-		if ( $why ) {
-			hsm_confirm( $in, 'Coupon ' . $in['code'] . ': ' . implode( '; ', $why ), array( 'code' => $in['code'], 'type' => $type, 'amount' => $amount, 'usage_limit' => $in['usage_limit'] ?? null, 'expires' => $in['expires'] ?? null ) );
-		}
+		$reason = $why ? 'Coupon ' . $in['code'] . ': ' . implode( '; ', $why ) : ( $cid ? 'Update coupon ' . $in['code'] : 'Create coupon ' . $in['code'] );
+		hsm_confirm( $in, $reason, array( 'code' => $in['code'], 'type' => $type, 'amount' => $amount, 'usage_limit' => $in['usage_limit'] ?? null, 'expires' => $in['expires'] ?? null, 'input' => $in ) );
 		hsm_undo_add( array( 'type' => 'coupon', 'id' => $cid, 'state' => $cid ? hsm_coupon_state( new WC_Coupon( $cid ) ) : null ) );
 		$c = new WC_Coupon( $cid ?: 0 );
 		$c->set_code( $in['code'] );
@@ -1130,7 +1136,8 @@ hsm_ability( 'shipping-manage', array(
 					}
 				}
 				! empty( $in['replace_methods'] ) && $why[] = 'replaces all existing methods in the zone';
-				$why && hsm_confirm( $in, 'Shipping change: ' . implode( '; ', $why ), array( 'zone' => $in['zone_name'] ?? $in['zone_id'] ?? null, 'regions' => $in['regions'] ?? null, 'methods' => $in['methods'] ?? null ) );
+				$reason = $why ? 'Shipping change: ' . implode( '; ', $why ) : 'Update shipping zone ' . ( $in['zone_name'] ?? $in['zone_id'] ?? '(new zone)' );
+				hsm_confirm( $in, $reason, array( 'zone' => $in['zone_name'] ?? $in['zone_id'] ?? null, 'regions' => $in['regions'] ?? null, 'methods' => $in['methods'] ?? null ) );
 				$z = $find() ?: new WC_Shipping_Zone();
 				! empty( $in['zone_name'] ) && $z->set_zone_name( $in['zone_name'] );
 				if ( isset( $in['regions'] ) ) {
@@ -1226,6 +1233,7 @@ hsm_ability( 'tax-manage', array(
 				throw new HSM_Blocked( 'Each tax rate needs a 2-letter country code.' );
 			}
 		}
+		hsm_confirm( $in, 'Add ' . count( (array) ( $in['rates'] ?? array() ) ) . ' tax rate(s)', array( 'class' => $class, 'rates' => $in['rates'] ?? array() ) );
 		foreach ( (array) ( $in['rates'] ?? array() ) as $r ) {
 			$id = WC_Tax::_insert_tax_rate( array(
 				'tax_rate_country'  => strtoupper( $r['country'] ?? '' ),
