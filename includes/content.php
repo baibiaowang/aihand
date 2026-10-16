@@ -508,7 +508,12 @@ hsm_ability( 'content', array(
 			}, $posts ) );
 		}
 		// Every remaining content action writes content or site configuration; require approval before its branch can mutate.
-		hsm_confirm( $in, 'Content operation: ' . $action, array( 'action' => $action, 'input' => $in ) );
+		$target_post = ! empty( $in['post_id'] ) ? get_post( (int) $in['post_id'] ) : null;
+		$review_preview = array( 'action' => $action, 'input' => $in );
+		if ( $target_post ) {
+			$review_preview['post_snapshot'] = array( 'id' => (int) $target_post->ID, 'status' => $target_post->post_status, 'modified_gmt' => $target_post->post_modified_gmt, 'content_hash' => hash( 'sha256', (string) $target_post->post_content ), 'title' => $target_post->post_title );
+		}
+		hsm_confirm( $in, 'Content operation: ' . $action, $review_preview );
 		if ( 'set_settings' === $action ) {
 			$incoming = (array) ( $in['settings'] ?? array() );
 			if ( ! $incoming ) {
