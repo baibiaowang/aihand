@@ -143,6 +143,20 @@ function hsm_review_handle_post(){
 	if(!is_admin()||!hsm_review_can_approve()||empty($_POST['hsm_review_action']))return;
 	check_admin_referer('hsm_review_action','hsm_review_nonce');
 	$id=absint($_POST['hsm_review_id']??0);$action=sanitize_key($_POST['hsm_review_action']);
-	if($action==='approve')hsm_review_approve($id);elseif($action==='execute')hsm_review_execute($id);elseif($action==='reject')hsm_review_reject($id,$_POST['hsm_reject_reason']??'');
+	if(!in_array($action,array('approve','execute','reject'),true))return;
+	$result=$action==='approve'?hsm_review_approve($id):($action==='execute'?hsm_review_execute($id):hsm_review_reject($id,$_POST['hsm_reject_reason']??''));
+	$labels=array('approve'=>'批准','execute'=>'执行','reject'=>'拒绝');
+	if(is_wp_error($result)){$notice=array('type'=>'error','message'=>$result->get_error_message());$next='pending';}
+	else{$notice=array('type'=>'success','message'=>($labels[$action]??'操作').'成功。');$next=array('approve'=>'approved','execute'=>'executed','reject'=>'rejected')[$action];}
+	set_transient('hsm_review_notice_'.get_current_user_id(),$notice,60);
+	$url=add_query_arg(array('page'=>'hsm-review','review_status'=>$next),admin_url('admin.php'));
+	wp_safe_redirect($url);exit;
 }
+function hsm_review_admin_notice(){
+	if(!is_admin()||!hsm_review_can_approve())return;
+	$key='hsm_review_notice_'.get_current_user_id();$notice=get_transient($key);if(!$notice)return;delete_transient($key);
+	$class=($notice['type']??'error')==='success'?'notice-success':'notice-error';
+	echo '<div class="notice '.esc_attr($class).' is-dismissible"><p>'.esc_html($notice['message']??'审核操作未完成。').'</p></div>';
+}
+add_action('admin_notices','hsm_review_admin_notice');
 add_action('admin_init','hsm_review_handle_post');
