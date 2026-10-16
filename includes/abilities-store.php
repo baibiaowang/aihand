@@ -1000,7 +1000,7 @@ hsm_ability( 'coupon-manage', array(
 				throw new Exception( 'Coupon not found.' );
 			}
 			$old = new WC_Coupon( $cid );
-			hsm_confirm( $in, 'Delete coupon ' . $in['code'], array( 'code' => $in['code'], 'used' => $old->get_usage_count() ) );
+			hsm_confirm( $in, 'Delete coupon ' . $in['code'], array( 'code' => $in['code'], 'used' => $old->get_usage_count(), 'coupon_snapshot' => array( 'id' => (int) $cid, 'state' => hsm_coupon_state( $old ), 'usage_count' => (int) $old->get_usage_count() ) ) );
 			hsm_undo_add( array( 'type' => 'coupon_deleted', 'state' => hsm_coupon_state( $old ) ) );
 			wp_delete_post( $cid, true );
 			return array( 'deleted' => $in['code'] );
@@ -1038,7 +1038,7 @@ hsm_ability( 'coupon-manage', array(
 			$why[] = 'free shipping with no minimum order';
 		}
 		$reason = $why ? 'Coupon ' . $in['code'] . ': ' . implode( '; ', $why ) : ( $cid ? 'Update coupon ' . $in['code'] : 'Create coupon ' . $in['code'] );
-		hsm_confirm( $in, $reason, array( 'code' => $in['code'], 'type' => $type, 'amount' => $amount, 'usage_limit' => $in['usage_limit'] ?? null, 'expires' => $in['expires'] ?? null, 'input' => $in ) );
+		hsm_confirm( $in, $reason, array( 'code' => $in['code'], 'type' => $type, 'amount' => $amount, 'usage_limit' => $in['usage_limit'] ?? null, 'expires' => $in['expires'] ?? null, 'input' => $in, 'coupon_snapshot' => $cid ? array( 'id' => (int) $cid, 'state' => hsm_coupon_state( new WC_Coupon( $cid ) ), 'usage_count' => (int) ( new WC_Coupon( $cid ) )->get_usage_count() ) : null ) );
 		hsm_undo_add( array( 'type' => 'coupon', 'id' => $cid, 'state' => $cid ? hsm_coupon_state( new WC_Coupon( $cid ) ) : null ) );
 		$c = new WC_Coupon( $cid ?: 0 );
 		$c->set_code( $in['code'] );
