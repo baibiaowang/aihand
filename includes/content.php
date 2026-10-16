@@ -507,6 +507,8 @@ hsm_ability( 'content', array(
 				return array( 'id' => $p->ID, 'title' => $p->post_title, 'publish_at' => $p->post_date, 'author' => get_the_author_meta( 'user_login', $p->post_author ) );
 			}, $posts ) );
 		}
+		// Every remaining content action writes content or site configuration; require approval before its branch can mutate.
+		hsm_confirm( $in, 'Content operation: ' . $action, array( 'action' => $action, 'input' => $in ) );
 		if ( 'set_settings' === $action ) {
 			$incoming = (array) ( $in['settings'] ?? array() );
 			if ( ! $incoming ) {
