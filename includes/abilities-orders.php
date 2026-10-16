@@ -283,10 +283,10 @@ hsm_ability( 'order-update', array(
 				throw new Exception( 'Unknown order status ' . $in['status'] . '. Valid: ' . implode( ', ', array_map( function ( $k ) { return substr( $k, 3 ); }, array_keys( wc_get_order_statuses() ) ) ) );
 			}
 			if ( in_array( $in['status'], array( 'cancelled', 'refunded', 'failed' ), true ) ) {
-				hsm_confirm( $in, sprintf( 'Change order #%s (%s %s) from %s to %s%s', $o->get_order_number(), $o->get_total(), $o->get_currency(), $o->get_status(), $in['status'], 'refunded' === $in['status'] ? ' — this marks it refunded but does NOT send money back; use order-refund for that' : ' — stock will be restored and the customer emailed' ), array( 'order' => $o->get_id(), 'total' => $o->get_total() ) );
+				hsm_confirm( $in, sprintf( 'Change order #%s (%s %s) from %s to %s%s', $o->get_order_number(), $o->get_total(), $o->get_currency(), $o->get_status(), $in['status'], 'refunded' === $in['status'] ? ' — this marks it refunded but does NOT send money back; use order-refund for that' : ' — stock will be restored and the customer emailed' ), array( 'order' => $o->get_id(), 'total' => $o->get_total(), 'current_status' => $o->get_status() ) );
 			}
 			if ( $o->has_status( array( 'refunded', 'cancelled' ) ) && in_array( $in['status'], array( 'processing', 'completed' ), true ) ) {
-				hsm_confirm( $in, "Re-open a {$o->get_status()} order as {$in['status']}", array( 'order' => $o->get_id() ) );
+				hsm_confirm( $in, "Re-open a {$o->get_status()} order as {$in['status']}", array( 'order' => $o->get_id(), 'current_status' => $o->get_status() ) );
 			}
 		}
 		if ( ! empty( $in['tracking'] ) ) {
