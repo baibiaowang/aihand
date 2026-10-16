@@ -10,22 +10,45 @@ function hsm_review_canonical($ability,$input) {
 	unset($input['confirm_token']);
 	return hash('sha256',$ability.'|'.wp_json_encode(hsm_canonical($input)));
 }
-function hsm_review_extract_ids($value,$ability='') {
+function hsm_review_extract_ids($value,$ability='',$path=array()) {
 	$ids=array();
-	if(is_array($value)) foreach($value as $k=>$v) {
-		if((in_array($k,array('product_id','variation_id'),true)||($k==='id'&&preg_match('/product|products-bulk/i',$ability)))&&is_numeric($v)&&(int)$v>0)$ids[]=(int)$v;
-		$ids=array_merge($ids,hsm_review_extract_ids($v,$ability));
+	if(!is_array($value))return $ids;
+	foreach($value as $k=>$v) {
+		$next=array_merge($path,array((string)$k));
+		$is_product_id=in_array($k,array('product_id','variation_id'),true);
+		$is_root_product_id=empty($path)&&$k==='id'&&preg_match('/product-upsert$/',$ability);
+		$is_bulk_item_id=$k==='id'&&in_array('items',$path,true)&&preg_match('/products-bulk-update$/',$ability);
+		$is_filter_id=in_array('ids',$path,true)&&is_numeric($v);
+		if(($is_product_id||$is_root_product_id||$is_bulk_item_id||$is_filter_id)&&is_numeric($v)&&(int)$v>0)$ids[]=(int)$v;
+		if($k==='sku'&&is_string($v)&&$v!==''&&function_exists('wc_get_product_id_by_sku')){$sku_id=(int)wc_get_product_id_by_sku($v);if($sku_id>0)$ids[]=$sku_id;}
+		$ids=array_merge($ids,hsm_review_extract_ids($v,$ability,$next));
 	}
 	return array_values(array_unique($ids));
 }
 function hsm_review_server_snapshot($input,$preview=array()) {
-	$ids=hsm_review_extract_ids($input,$GLOBALS['hsm_current_ability']??'');$products=array();
+	$ability=$GLOBALS['hsm_current_ability']??'';
+	$ids=hsm_review_extract_ids($input,$ability);$products=array();
 	foreach($ids as $id) {
 		if(!function_exists('wc_get_product'))break;
 		$p=wc_get_product($id);if(!$p)continue;
-		$products[]=array('id'=>$id,'name'=>$p->get_name(),'type'=>$p->get_type(),'status'=>$p->get_status(),'url'=>get_permalink($id),'edit_url'=>get_edit_post_link($id,''),'regular_price'=>$p->get_regular_price(),'sale_price'=>$p->get_sale_price(),'stock_status'=>$p->get_stock_status(),'stock_quantity'=>$p->get_stock_quantity());
+		$children=method_exists($p,'get_children')?$p->get_children():array();sort($children);
+		$products[]=array('id'=>$id,'name'=>$p->get_name(),'sku'=>$p->get_sku(),'type'=>$p->get_type(),'status'=>$p->get_status(),'manage_stock'=>$p->get_manage_stock(),'child_ids'=>array_values(array_map('intval',$children)),'url'=>get_permalink($id),'edit_url'=>get_edit_post_link($id,''),'regular_price'=>$p->get_regular_price(),'sale_price'=>$p->get_sale_price(),'stock_status'=>$p->get_stock_status(),'stock_quantity'=>$p->get_stock_quantity());
 	}
-	return array('server_verified_at'=>current_time('mysql',true),'products'=>$products,'changes'=>is_array($preview)&&!empty($preview['changes'])?$preview['changes']:array(),'raw_preview'=>$preview,'validation'=>array('plan_hash_valid'=>true,'server_snapshot'=>!empty($products),'live_recheck'=>'performed again before execution'));
+	$changes=array();
+	if(is_array($preview)){
+		if(!empty($preview['changes'])&&is_array($preview['changes'])){
+			foreach($preview['changes'] as $key=>$change){
+				if(is_array($change)&&array_key_exists('before',$change)||is_array($change)&&array_key_exists('after',$change))$changes[]=$change;
+				elseif(is_array($change)&&array_key_exists('from',$change)||is_array($change)&&array_key_exists('to',$change))$changes[]=array('field'=>(string)$key,'before'=>$change['from']??null,'after'=>$change['to']??null);
+				else $changes[]=$change;
+			}
+		}elseif(!empty($preview['first_changes'])&&is_array($preview['first_changes'])){
+			foreach($preview['first_changes'] as $item){foreach((array)($item['changes']??array()) as $field=>$change){if(is_array($change))$changes[]=array('id'=>$item['id']??'','field'=>($item['item']??'').': '.$field,'before'=>$change['from']??null,'after'=>$change['to']??null);}}
+		}else{
+			foreach($preview as $key=>$change){if(is_array($change)&&(array_key_exists('from',$change)||array_key_exists('to',$change)))$changes[]=array('field'=>(string)$key,'before'=>$change['from']??null,'after'=>$change['to']??null);}
+		}
+	}
+	return array('server_verified_at'=>current_time('mysql',true),'products'=>$products,'changes'=>$changes,'raw_preview'=>$preview,'validation'=>array('plan_hash_valid'=>true,'server_snapshot'=>!empty($products),'live_recheck'=>'performed again before execution'));
 }
 function hsm_review_create($ability,$input,$reason,$preview,$token='') {
 	$hash=hsm_review_canonical($ability,$input);
@@ -72,8 +95,9 @@ function hsm_review_validate($d) {
 		$p=wc_get_product($id);if(!$p)return new WP_Error('stale','A referenced product no longer exists.');
 		$old=null;foreach($stored_products as $sp)if((int)($sp['id']??0)===$id){$old=$sp;break;}
 		if($old){
-			$live=array('name'=>$p->get_name(),'status'=>$p->get_status(),'regular_price'=>$p->get_regular_price(),'sale_price'=>$p->get_sale_price(),'stock_status'=>$p->get_stock_status(),'stock_quantity'=>$p->get_stock_quantity());
-			foreach($live as $key=>$value)if((string)$value!==(string)($old[$key]??''))return new WP_Error('stale',"Product #$id changed since this proposal was created ($key). Refresh the proposal before executing.");
+			$children=method_exists($p,'get_children')?$p->get_children():array();sort($children);
+			$live=array('name'=>$p->get_name(),'sku'=>$p->get_sku(),'type'=>$p->get_type(),'status'=>$p->get_status(),'manage_stock'=>$p->get_manage_stock(),'child_ids'=>array_values(array_map('intval',$children)),'regular_price'=>$p->get_regular_price(),'sale_price'=>$p->get_sale_price(),'stock_status'=>$p->get_stock_status(),'stock_quantity'=>$p->get_stock_quantity());
+			foreach($live as $key=>$value)if(wp_json_encode($value)!==wp_json_encode($old[$key]??($key==='child_ids'?array():'')))return new WP_Error('stale',"Product #$id changed since this proposal was created ($key). Refresh the proposal before executing.");
 		}
 	}
 	return true;
