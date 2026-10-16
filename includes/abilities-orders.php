@@ -309,8 +309,24 @@ hsm_ability( 'order-update', array(
 				$in[ $t ] = array_map( 'sanitize_text_field', array_intersect_key( (array) $in[ $t ], array_flip( array( 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country', 'email', 'phone' ) ) ) );
 			}
 		}
+		// Capture only fields this proposal intends to change, so unrelated order updates do not invalidate it.
+		$order_snapshot = array( 'status' => $o->get_status(), 'billing' => array(), 'shipping' => array(), 'meta' => array() );
+		foreach ( array( 'billing', 'shipping' ) as $address_type ) {
+			if ( ! empty( $in[ $address_type ] ) ) {
+				$current_address = $o->get_address( $address_type );
+				foreach ( array_keys( $in[ $address_type ] ) as $field ) {
+					$order_snapshot[ $address_type ][ $field ] = $current_address[ $field ] ?? '';
+				}
+			}
+		}
+		foreach ( array_keys( (array) ( $in['meta'] ?? array() ) ) as $meta_key ) {
+			$order_snapshot['meta'][ $meta_key ] = $o->get_meta( $meta_key, true );
+		}
+		if ( ! empty( $in['tracking'] ) ) {
+			$order_snapshot['tracking'] = $o->get_meta( '_hsm_tracking', true );
+		}
 		// Status, address, metadata, tracking and notes are all order mutations, even when the change is routine.
-		hsm_confirm( $in, 'Update order #' . $o->get_order_number(), array( 'order' => $o->get_id(), 'current_status' => $o->get_status(), 'requested_changes' => $in ) );
+		hsm_confirm( $in, 'Update order #' . $o->get_order_number(), array( 'order' => $o->get_id(), 'current_status' => $o->get_status(), 'order_snapshot' => $order_snapshot, 'requested_changes' => $in ) );
 		foreach ( array( 'billing', 'shipping' ) as $t ) {
 			! empty( $in[ $t ] ) && $o->set_address( array_merge( $o->get_address( $t ), $in[ $t ] ), $t );
 		}
