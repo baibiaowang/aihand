@@ -173,7 +173,9 @@ function hsm_review_execute($id) {
 		if($d['status']!=='approved')return new WP_Error('invalid_state','Approve this review before execution.');
 		$ref=HSM_Registry::$abilities[$d['ability']];
 		$GLOBALS['hsm_review_execution']=array('id'=>(int)$id,'ability'=>$d['ability'],'input_hash'=>$d['input_hash']);
-		hsm_review_update($id,array('status'=>'executing','executed_by'=>get_current_user_id(),'executing_at'=>current_time('mysql',true)));hsm_review_audit($id,'execution_started');
+		$marked=hsm_review_update($id,array('status'=>'executing','executed_by'=>get_current_user_id(),'executing_at'=>current_time('mysql',true)));
+		if(is_wp_error($marked)||!$marked)return new WP_Error('state_persist_failed','Could not persist the executing state; the operation was not run. Please retry after checking the review task.');
+		hsm_review_audit($id,'execution_started');
 		$result=hsm_run_ability($d['ability'],$ref,$d['input']);
 		if(is_wp_error($result)){$rollback=hsm_review_rollback_partial($d['ability']);hsm_review_update($id,array('status'=>'execution_error','error'=>$result->get_error_message(),'rollback'=>$rollback));hsm_review_audit($id,'execution_error',array('message'=>$result->get_error_message(),'rollback'=>$rollback));return $result;}
 		hsm_review_update($id,array('status'=>'executed','executed_at'=>current_time('mysql',true),'result'=>$result));hsm_review_audit($id,'executed');return $result;
