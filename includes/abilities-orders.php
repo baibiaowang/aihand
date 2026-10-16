@@ -282,12 +282,6 @@ hsm_ability( 'order-update', array(
 			if ( ! array_key_exists( 'wc-' . $in['status'], wc_get_order_statuses() ) ) {
 				throw new Exception( 'Unknown order status ' . $in['status'] . '. Valid: ' . implode( ', ', array_map( function ( $k ) { return substr( $k, 3 ); }, array_keys( wc_get_order_statuses() ) ) ) );
 			}
-			if ( in_array( $in['status'], array( 'cancelled', 'refunded', 'failed' ), true ) ) {
-				hsm_confirm( $in, sprintf( 'Change order #%s (%s %s) from %s to %s%s', $o->get_order_number(), $o->get_total(), $o->get_currency(), $o->get_status(), $in['status'], 'refunded' === $in['status'] ? ' — this marks it refunded but does NOT send money back; use order-refund for that' : ' — stock will be restored and the customer emailed' ), array( 'order' => $o->get_id(), 'total' => $o->get_total(), 'current_status' => $o->get_status() ) );
-			}
-			if ( $o->has_status( array( 'refunded', 'cancelled' ) ) && in_array( $in['status'], array( 'processing', 'completed' ), true ) ) {
-				hsm_confirm( $in, "Re-open a {$o->get_status()} order as {$in['status']}", array( 'order' => $o->get_id(), 'current_status' => $o->get_status() ) );
-			}
 		}
 		if ( ! empty( $in['tracking'] ) ) {
 			$t = (array) $in['tracking'];
@@ -325,8 +319,15 @@ hsm_ability( 'order-update', array(
 		if ( ! empty( $in['tracking'] ) ) {
 			$order_snapshot['tracking'] = $o->get_meta( '_hsm_tracking', true );
 		}
+		// Use one confirmation point so every proposal includes the same live-state snapshot.
+		$review_reason = 'Update order #' . $o->get_order_number();
+		if ( ! empty( $in['status'] ) && in_array( $in['status'], array( 'cancelled', 'refunded', 'failed' ), true ) ) {
+			$review_reason = sprintf( 'Change order #%s (%s %s) from %s to %s%s', $o->get_order_number(), $o->get_total(), $o->get_currency(), $o->get_status(), $in['status'], 'refunded' === $in['status'] ? ' — this marks it refunded but does NOT send money back; use order-refund for that' : ' — stock may be restored and the customer emailed' );
+		} elseif ( ! empty( $in['status'] ) && $o->has_status( array( 'refunded', 'cancelled' ) ) && in_array( $in['status'], array( 'processing', 'completed' ), true ) ) {
+			$review_reason = "Re-open a {$o->get_status()} order as {$in['status']}";
+		}
 		// Status, address, metadata, tracking and notes are all order mutations, even when the change is routine.
-		hsm_confirm( $in, 'Update order #' . $o->get_order_number(), array( 'order' => $o->get_id(), 'current_status' => $o->get_status(), 'order_snapshot' => $order_snapshot, 'requested_changes' => $in ) );
+		hsm_confirm( $in, $review_reason, array( 'order' => $o->get_id(), 'current_status' => $o->get_status(), 'order_snapshot' => $order_snapshot, 'requested_changes' => $in ) );
 		foreach ( array( 'billing', 'shipping' ) as $t ) {
 			! empty( $in[ $t ] ) && $o->set_address( array_merge( $o->get_address( $t ), $in[ $t ] ), $t );
 		}
