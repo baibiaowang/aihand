@@ -1,6 +1,63 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
+/**
+ * Capture current SEO values for every target touched by an approval-gated update.
+ * This is used only to detect stale proposals; it does not perform any writes.
+ */
+function hsm_seo_review_snapshot( $items ) {
+	$snapshots = array();
+	$post_meta_keys = array(
+		'title' => '_hsm_seo_title', 'description' => '_hsm_seo_description',
+		'focus_keyword' => '_hsm_seo_focus_keyword', 'canonical' => '_hsm_seo_canonical',
+		'noindex' => '_hsm_seo_noindex', 'nofollow' => '_hsm_seo_nofollow',
+		'og_image' => '_hsm_seo_og_image', 'gtin' => '_hsm_seo_gtin',
+		'mpn' => '_hsm_seo_mpn', 'brand' => '_hsm_seo_brand', 'condition' => '_hsm_seo_condition',
+		'google_category' => '_hsm_google_category', 'feed_exclude' => '_hsm_feed_exclude',
+	);
+	foreach ( (array) $items as $item ) {
+		if ( ! is_array( $item ) ) {
+			continue;
+		}
+		if ( ! empty( $item['term'] ) ) {
+			$tax = sanitize_key( $item['taxonomy'] ?? 'product_cat' );
+			$term = is_numeric( $item['term'] ) ? get_term( (int) $item['term'], $tax ) : get_term_by( 'name', (string) $item['term'], $tax );
+			if ( ! $term || is_wp_error( $term ) ) {
+				$snapshots[] = array( 'kind' => 'term', 'taxonomy' => $tax, 'ref' => (string) $item['term'], 'missing' => true );
+				continue;
+			}
+			$meta = array();
+			foreach ( array( 'title', 'description', 'noindex' ) as $field ) {
+				if ( array_key_exists( $field, $item ) ) {
+					$meta[ $field ] = get_term_meta( $term->term_id, '_hsm_seo_' . $field, true );
+				}
+			}
+			$snapshots[] = array( 'kind' => 'term', 'id' => (int) $term->term_id, 'taxonomy' => $tax, 'meta' => $meta );
+			continue;
+		}
+		$id = ! empty( $item['id'] ) ? (int) $item['id'] : ( ! empty( $item['sku'] ) && function_exists( 'wc_get_product_id_by_sku' ) ? (int) wc_get_product_id_by_sku( $item['sku'] ) : 0 );
+		if ( ! $id || ! get_post( $id ) ) {
+			$snapshots[] = array( 'kind' => 'post', 'ref' => $item['id'] ?? $item['sku'] ?? null, 'missing' => true );
+			continue;
+		}
+		$meta = array();
+		foreach ( $post_meta_keys as $field => $meta_key ) {
+			if ( array_key_exists( $field, $item ) ) {
+				$meta[ $meta_key ] = get_post_meta( $id, $meta_key, true );
+			}
+		}
+		$entry = array( 'kind' => 'post', 'id' => $id, 'meta' => $meta );
+		if ( array_key_exists( 'gtin', $item ) && function_exists( 'wc_get_product' ) ) {
+			$product = wc_get_product( $id );
+			if ( $product && method_exists( $product, 'get_global_unique_id' ) ) {
+				$entry['global_unique_id'] = $product->get_global_unique_id();
+			}
+		}
+		$snapshots[] = $entry;
+	}
+	return $snapshots;
+}
+
 hsm_ability( 'seo-update', array(
 	'label'       => 'Set SEO fields for products, posts, pages or categories',
 	'description' => 'Bulk-capable. items: [{id (post/product id) | sku | term (category name/id with taxonomy), title, description, focus_keyword, canonical, noindex, nofollow, og_image, gtin, mpn, brand, condition (new|used|refurbished), google_category, feed_exclude}]. Empty string clears a field. Returns lengths so you can keep titles ≈50-60 and descriptions ≈140-160 characters.',
@@ -17,7 +74,7 @@ hsm_ability( 'seo-update', array(
 			throw new HSM_Blocked( 'Too many items in one call (guard max_bulk_items).' );
 		}
 		// All SEO metadata changes need explicit review, not only noindex changes.
-		hsm_confirm( $in, 'Update SEO fields for ' . count( $in['items'] ) . ' item(s)', array( 'items' => $in['items'] ) );
+		hsm_confirm( $in, 'Update SEO fields for ' . count( $in['items'] ) . ' item(s)', array( 'items' => $in['items'], 'seo_snapshot' => hsm_seo_review_snapshot( $in['items'] ) ) );
 		$noidx = array_filter( (array) $in['items'], function ( $it ) { return ! empty( $it['noindex'] ) && filter_var( $it['noindex'], FILTER_VALIDATE_BOOLEAN ); } );
 		if ( $noidx ) {
 			hsm_confirm( $in, count( $noidx ) . ' item(s) will be hidden from search engines (noindex)', array_values( array_map( function ( $it ) { return $it['id'] ?? $it['sku'] ?? $it['term'] ?? null; }, $noidx ) ) );
