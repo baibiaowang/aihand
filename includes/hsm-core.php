@@ -224,8 +224,9 @@ function hsm_confirm( $in, $reason, $preview = array() ) {
 	$ability = $GLOBALS['hsm_current_ability'] ?? 'unknown';
 	$hash    = hsm_input_hash( $ability, $in );
 	$approved = $GLOBALS['hsm_review_execution'] ?? null;
+	$review_hash = function_exists( 'hsm_review_canonical' ) ? hsm_review_canonical( $ability, $in ) : '';
 	if ( is_array( $approved ) && (int) ( $approved['id'] ?? 0 ) > 0
-		&& ($approved['ability'] ?? '') === $ability && ($approved['input_hash'] ?? '') === $hash ) {
+		&& ($approved['ability'] ?? '') === $ability && ($approved['input_hash'] ?? '') === $review_hash ) {
 		$GLOBALS['hsm_confirmed'] = $reason;
 		return;
 	}
