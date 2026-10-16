@@ -124,6 +124,7 @@ function hsm_review_validate($d) {
 			foreach($live as $key=>$value)if(array_key_exists($key,$old)&&wp_json_encode($value)!==wp_json_encode($old[$key]))return new WP_Error('stale',"Product #$id changed since this proposal was created ($key). Refresh the proposal before executing.");
 		}
 	}
+	$raw_preview=$d['preview']['raw_preview']??array();
 	// SEO proposals must not overwrite metadata changed by a person/plugin after approval.
 	if ( preg_match( '/seo-update$/', $d['ability'] ?? '' ) ) {
 		foreach ( (array) ( $raw_preview['seo_snapshot'] ?? array() ) as $snapshot ) {
@@ -154,7 +155,6 @@ function hsm_review_validate($d) {
 		}
 	}
 	// Revalidate high-impact non-product targets too; their state can change while a review waits for approval.
-	$raw_preview=$d['preview']['raw_preview']??array();
 	$settings_option_map=array('/seo-settings$/' =>'hsm_seo','/conversion$/' =>'hsm_conversion','/marketing$/' =>'hsm_marketing','/shipping-rules$/' =>'hsm_shipping_rules','/shipments$/' =>'hsm_shipments');
 	foreach($settings_option_map as $pattern=>$option){if(preg_match($pattern,$d['ability']??'')&&array_key_exists('before',$raw_preview)){if(wp_json_encode(get_option($option,array()))!==wp_json_encode($raw_preview['before']))return new WP_Error('stale','The settings changed after this proposal was created. Refresh and review the latest values before executing.');}}
 	if(preg_match('/support$/',$d['ability']??'')&&in_array($d['input']['action']??'',array('set_settings','templates_set'),true)&&array_key_exists('before',$raw_preview)){if(wp_json_encode(get_option('hsm_support',array()))!==wp_json_encode($raw_preview['before']))return new WP_Error('stale','Customer support settings changed after this proposal was created. Refresh the proposal.');}
