@@ -124,6 +124,24 @@ function hsm_review_validate($d) {
 			foreach($live as $key=>$value)if(array_key_exists($key,$old)&&wp_json_encode($value)!==wp_json_encode($old[$key]))return new WP_Error('stale',"Product #$id changed since this proposal was created ($key). Refresh the proposal before executing.");
 		}
 	}
+	// Revalidate high-impact non-product targets too; their state can change while a review waits for approval.
+	$raw_preview=$d['preview']['raw_preview']??array();
+	if(preg_match('/order-update$/',$d['ability']??'')&&!empty($raw_preview['order'])){
+		$order=function_exists('wc_get_order')?wc_get_order((int)$raw_preview['order']):false;
+		if(!$order)return new WP_Error('stale','The order no longer exists. Refresh the proposal before executing.');
+		if(isset($raw_preview['current_status'])&&$order->get_status()!==$raw_preview['current_status'])return new WP_Error('stale','The order status changed after this proposal was created. Refresh the proposal before executing.');
+	}
+	if(preg_match('/order-refund$/',$d['ability']??'')&&!empty($raw_preview['order'])){
+		$order=function_exists('wc_get_order')?wc_get_order((int)$raw_preview['order']):false;
+		if(!$order)return new WP_Error('stale','The order no longer exists. Refresh the refund proposal.');
+		if(isset($raw_preview['already_refunded'])&&abs((float)$order->get_total_refunded()-(float)$raw_preview['already_refunded'])>0.00001)return new WP_Error('stale','The order refund total changed after this proposal was created. Recalculate the remaining refundable amount.');
+		if(isset($raw_preview['order_total'])&&abs((float)$order->get_total()-(float)$raw_preview['order_total'])>0.00001)return new WP_Error('stale','The order total changed after this refund proposal was created. Refresh the proposal.');
+	}
+	if(preg_match('/customers-manage$/',$d['ability']??'')){
+		$action=$raw_preview['action']??'';$email=sanitize_email((string)($d['input']['email']??''));
+		if('create'===$action&&$email&&function_exists('get_user_by')&&get_user_by('email',$email))return new WP_Error('stale','A customer account with this email was created after the proposal. Refresh the task instead of applying the create plan to an existing account.');
+		if('update'===$action){$uid=(int)($raw_preview['customer_id']??0);$user=$uid&&function_exists('get_userdata')?get_userdata($uid):false;if(!$user)return new WP_Error('stale','The customer account no longer exists. Refresh the proposal.');if($email&&strtolower((string)$user->user_email)!==strtolower($email))return new WP_Error('stale','The customer email-to-account mapping changed after review. Refresh the proposal.');$roles=(array)($user->roles??array());if(!array_intersect($roles,array('customer','subscriber')))return new WP_Error('stale','This account is no longer a customer/subscriber and cannot be edited through this proposal.');}
+	}
 	return true;
 }
 function hsm_review_approve($id) {
