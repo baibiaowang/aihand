@@ -14,7 +14,7 @@ description: Run a WooCommerce store through the AI Hand MCP server (tools prefi
 2. Identify products by **SKU**. `product-upsert`, `product-get`, `products-bulk-update`, `order-create`, `coupon-manage` all accept SKUs.
 3. `product-upsert` is idempotent: same SKU twice updates, never duplicates. Send only the fields you change.
 4. Before any bulk price change run `products-bulk-update` with `dry_run: true`, show the diff to the user, then run it for real.
-5. **Dangerous writes return `CONFIRMATION_REQUIRED` first (nothing changes).** Show that preview to the user; only if they approve, call again with the same arguments plus `confirm_token`.
+5. **When a write returns `CONFIRMATION_REQUIRED`, nothing has changed.** The server saves a review task. Tell the store owner to open WordPress Admin → WooCommerce → AI 操作审核, inspect the proposal and approve/execute it there. Do not retry the write with `confirm_token`; legacy confirmation tokens are not accepted as proof of human approval.
 6. Never refund, delete permanently, or change order status to cancelled/refunded without the user's explicit go-ahead. Refunds default to manual (`api_refund: false`).
 7. Prices are strings without currency symbols ("19.99"). Dates are YYYY-MM-DD.
 8. If a dedicated tool is missing a field, use `rest-request` (e.g. `/wc/v3/...`). **`rest-request` cannot write posts/pages/templates/global-styles/menu-items/navigation/blocks** — those go through `content-upsert` (which applies HTML filtering). Do not edit the database.
