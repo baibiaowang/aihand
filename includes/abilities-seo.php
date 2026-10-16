@@ -265,6 +265,7 @@ hsm_ability( 'redirects-manage', array(
 				uasort( $log, function ( $a, $b ) { return $b['hits'] <=> $a['hits']; } );
 				return $log;
 			case 'clear_log':
+				hsm_confirm( $in, 'Clear the 404 log', array( 'count' => count( (array) get_option( 'hsm_404_log', array() ) ) ) );
 				hsm_undo_add( array( 'type' => 'option', 'name' => 'hsm_404_log', 'old' => get_option( 'hsm_404_log', array() ) ) );
 				update_option( 'hsm_404_log', array(), false );
 				return array( 'cleared' => true );
@@ -273,6 +274,7 @@ hsm_ability( 'redirects-manage', array(
 				if ( ! isset( $all[ $src ] ) ) {
 					throw new Exception( 'Redirect not found.' );
 				}
+				hsm_confirm( $in, 'Delete redirect ' . $src, array( 'source' => $src, 'redirect' => $all[ $src ] ) );
 				hsm_undo_add( array( 'type' => 'option', 'name' => 'hsm_redirects', 'old' => $all ) );
 				unset( $all[ $src ] );
 				update_option( 'hsm_redirects', $all, false );
@@ -282,6 +284,7 @@ hsm_ability( 'redirects-manage', array(
 				if ( count( (array) ( $in['redirects'] ?? array() ) ) > (int) hsm_guard( 'max_bulk_items' ) ) {
 					throw new HSM_Blocked( 'Too many redirects in one call.' );
 				}
+				hsm_confirm( $in, 'Add or update ' . count( (array) ( $in['redirects'] ?? array() ) ) . ' redirect(s)', array( 'redirects' => $in['redirects'] ?? array() ) );
 				hsm_undo_add( array( 'type' => 'option', 'name' => 'hsm_redirects', 'old' => $all ) );
 				$protected = hsm_redirect_protected_paths();
 				foreach ( (array) ( $in['redirects'] ?? array() ) as $r ) {
