@@ -427,9 +427,9 @@ hsm_ability( 'product-upsert', array(
 			$reasons[] = 'unpublishes a live product (status ' . $in['status'] . ')';
 		}
 		hsm_check_price_changes( $reprice_n ?? 0 );
-		if ( $reasons ) {
-			hsm_confirm( $in, implode( '; ', $reasons ), array( 'product' => $existing ? $existing->get_name() : $in['name'], 'changes' => $reasons ) );
-		}
+		// Every product write must go through the owner review queue, not only risky price/status changes.
+		$review_reason = $reasons ? implode( '; ', $reasons ) : ( $existing ? 'Update product "' . $existing->get_name() . '"' : 'Create product "' . ( $in['name'] ?? 'unnamed product' ) . '"' );
+		hsm_confirm( $in, $review_reason, array( 'product' => $existing ? $existing->get_name() : ( $in['name'] ?? '' ), 'changes' => $reasons, 'input' => $in ) );
 		if ( $existing ) {
 			hsm_snap_product( $id );
 		}
@@ -812,8 +812,10 @@ hsm_ability( 'products-bulk-update', array(
 		if ( count( $plan ) > (int) hsm_guard( 'confirm_bulk_over' ) ) {
 			array_unshift( $reasons, count( $plan ) . ' products/variations will change' );
 		}
-		if ( $reasons ) {
-			hsm_confirm( $in, implode( '; ', array_slice( $reasons, 0, 10 ) ) . ( count( $reasons ) > 10 ? '; …' : '' ), array( 'count' => count( $plan ), 'target_ids' => array_values( array_unique( array_map( function ( $row ) { return (int) $row[0]->get_id(); }, $plan ) ) ), 'candidate_ids' => hsm_review_bulk_target_ids( $in ), 'first_changes' => array_slice( $preview, 0, 15 ) ) );
+		if ( $plan ) {
+			// Small, ordinary bulk edits also require explicit owner approval; the size threshold is not an approval bypass.
+			$review_reason = $reasons ? implode( '; ', array_slice( $reasons, 0, 10 ) ) . ( count( $reasons ) > 10 ? '; …' : '' ) : count( $plan ) . ' product(s)/variation(s) will be updated';
+			hsm_confirm( $in, $review_reason, array( 'count' => count( $plan ), 'target_ids' => array_values( array_unique( array_map( function ( $row ) { return (int) $row[0]->get_id(); }, $plan ) ) ), 'candidate_ids' => hsm_review_bulk_target_ids( $in ), 'first_changes' => array_slice( $preview, 0, 15 ) ) );
 		}
 		// ---- Apply.
 		$parents = array();
