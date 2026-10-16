@@ -98,9 +98,9 @@ function hsm_review_update($id,$data) {
 	return wp_update_post(array('ID'=>(int)$id,'post_content'=>wp_slash(wp_json_encode($d,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))),true);
 }
 function hsm_review_audit($id,$event,$details=array()) {
-	$d=hsm_review_read($id);if(!$d)return;
+	$d=hsm_review_read($id);if(!$d)return false;
 	$log=$d['audit']??array();$log[]=array('event'=>sanitize_key($event),'user'=>get_current_user_id(),'time'=>current_time('mysql',true),'details'=>$details);
-	hsm_review_update($id,array('audit'=>$log));
+	return hsm_review_update($id,array('audit'=>$log));
 }
 function hsm_review_can_approve(){return current_user_can('manage_woocommerce')||current_user_can('manage_options');}
 
@@ -177,7 +177,8 @@ function hsm_review_execute($id) {
 		$GLOBALS['hsm_review_execution']=array('id'=>(int)$id,'ability'=>$d['ability'],'input_hash'=>$d['input_hash']);
 		$marked=hsm_review_update($id,array('status'=>'executing','executed_by'=>get_current_user_id(),'executing_at'=>current_time('mysql',true)));
 		if(is_wp_error($marked)||!$marked)return new WP_Error('state_persist_failed','Could not persist the executing state; the operation was not run. Please retry after checking the review task.');
-		hsm_review_audit($id,'execution_started');
+		$audit_started=hsm_review_audit($id,'execution_started');
+		if(is_wp_error($audit_started)||!$audit_started)return new WP_Error('audit_persist_failed','The execution-start audit record could not be saved, so the store operation was not run. Check the review task before retrying.');
 		$result=hsm_run_ability($d['ability'],$ref,$d['input']);
 		if(is_wp_error($result)){$rollback=hsm_review_rollback_partial($d['ability']);hsm_review_update($id,array('status'=>'execution_error','error'=>$result->get_error_message(),'rollback'=>$rollback));hsm_review_audit($id,'execution_error',array('message'=>$result->get_error_message(),'rollback'=>$rollback));return $result;}
 		$finished=hsm_review_update($id,array('status'=>'executed','executed_at'=>current_time('mysql',true),'result'=>$result));
