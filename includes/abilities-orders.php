@@ -405,7 +405,7 @@ hsm_ability( 'order-refund', array(
 		}
 		hsm_check_refund_day( $amount );
 		if ( $amount > (float) hsm_guard( 'max_refund_without_confirm' ) ) {
-			hsm_confirm( $in, sprintf( 'Refund %s %s on order #%s%s', wc_format_decimal( $amount, 2 ), $o->get_currency(), $o->get_order_number(), $api ? ' — money WILL be sent back through ' . $o->get_payment_method_title() : ' — recorded in the store only; you must send the money yourself' ), array( 'order' => $o->get_id(), 'order_total' => $o->get_total(), 'already_refunded' => $o->get_total_refunded(), 'amount' => $amount, 'restock' => $in['restock'] ?? true, 'gateway_refund' => $api ) );
+			hsm_confirm( $in, sprintf( 'Refund %s %s on order #%s%s', wc_format_decimal( $amount, 2 ), $o->get_currency(), $o->get_order_number(), $api ? ' — money WILL be sent back through ' . $o->get_payment_method_title() : ' — recorded in the store only; you must send the money yourself' ), array( 'order' => $o->get_id(), 'order_total' => $o->get_total(), 'already_refunded' => $o->get_total_refunded(), 'current_status' => $o->get_status(), 'amount' => $amount, 'restock' => $in['restock'] ?? true, 'gateway_refund' => $api ) );
 		}
 		$refund = wc_create_refund( array(
 			'amount'         => wc_format_decimal( $amount, wc_get_price_decimals() ),
