@@ -309,6 +309,8 @@ hsm_ability( 'order-update', array(
 				$in[ $t ] = array_map( 'sanitize_text_field', array_intersect_key( (array) $in[ $t ], array_flip( array( 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country', 'email', 'phone' ) ) ) );
 			}
 		}
+		// Status, address, metadata, tracking and notes are all order mutations, even when the change is routine.
+		hsm_confirm( $in, 'Update order #' . $o->get_order_number(), array( 'order' => $o->get_id(), 'current_status' => $o->get_status(), 'requested_changes' => $in ) );
 		foreach ( array( 'billing', 'shipping' ) as $t ) {
 			! empty( $in[ $t ] ) && $o->set_address( array_merge( $o->get_address( $t ), $in[ $t ] ), $t );
 		}
