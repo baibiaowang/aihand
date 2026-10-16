@@ -48,7 +48,11 @@ hsm_ability( 'content-upsert', array(
 			hsm_undo_add( array( 'type' => 'option', 'name' => 'page_for_posts', 'old' => get_option( 'page_for_posts' ) ) );
 		}
 		// All content writes require owner approval, including draft creation and ordinary edits.
-		hsm_confirm( $in, ( ! empty( $cur ) ? 'Update ' . $type . ' "' . $cur->post_title . '"' : 'Create ' . $type . ' "' . ( $in['title'] ?? 'untitled' ) . '"' ), array( 'id' => $cur->ID ?? null, 'type' => $type, 'status' => $status ?? ( $cur->post_status ?? 'draft' ), 'title' => $in['title'] ?? ( $cur->post_title ?? '' ), 'input' => $in ) );
+		$review_preview = array( 'id' => $cur->ID ?? null, 'type' => $type, 'status' => $status ?? ( $cur->post_status ?? 'draft' ), 'title' => $in['title'] ?? ( $cur->post_title ?? '' ), 'input' => $in );
+		if ( ! empty( $cur ) ) {
+			$review_preview['post_snapshot'] = array( 'id' => (int) $cur->ID, 'status' => $cur->post_status, 'modified_gmt' => $cur->post_modified_gmt, 'content_hash' => hash( 'sha256', (string) $cur->post_content ), 'title' => $cur->post_title );
+		}
+		hsm_confirm( $in, ( ! empty( $cur ) ? 'Update ' . $type . ' "' . $cur->post_title . '"' : 'Create ' . $type . ' "' . ( $in['title'] ?? 'untitled' ) . '"' ), $review_preview );
 		if ( ! empty( $cur ) && 'publish' === $cur->post_status && $status && 'publish' !== $status ) {
 			hsm_confirm( $in, 'Unpublish live ' . $type . ' "' . $cur->post_title . '"', array( 'id' => $cur->ID ) );
 		}
