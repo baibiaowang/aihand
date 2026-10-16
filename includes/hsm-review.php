@@ -111,7 +111,7 @@ function hsm_review_validate($d) {
 	if(hsm_review_canonical($d['ability'],$d['input'])!==($d['input_hash']??''))return new WP_Error('tampered','Operation plan changed after it was created.');
 	if(empty(HSM_Registry::$abilities[$d['ability']]))return new WP_Error('ability_missing','The original AI ability is no longer available.');
 	$stored_products=$d['preview']['products']??array();
-	foreach((array)($d['preview']['sku_checks']??array()) as $sku=>$expected_id){$actual_id=(int)wc_get_product_id_by_sku((string)$sku);if($actual_id!==(int)$expected_id)return new WP_Error('stale',"SKU {$sku} now resolves to a different product. Refresh the proposal before executing.");}
+	if(function_exists('wc_get_product_id_by_sku'))foreach((array)($d['preview']['sku_checks']??array()) as $sku=>$expected_id){$actual_id=(int)wc_get_product_id_by_sku((string)$sku);if($actual_id!==(int)$expected_id)return new WP_Error('stale',"SKU {$sku} now resolves to a different product. Refresh the proposal before executing.");}
 	$check_ids=array_merge(hsm_review_extract_ids($d['input'],$d['ability']??''),array_map('absint',(array)($d['preview']['target_ids']??array())),array_map(function($p){return (int)($p['id']??0);},$stored_products));$check_ids=array_values(array_unique(array_filter($check_ids)));
 	if(preg_match('/products-bulk-update$/',$d['ability']??'')){$current_targets=hsm_review_bulk_target_ids($d['input']);$expected_targets=array_values(array_unique(array_map('absint',(array)($d['preview']['candidate_ids']??array()))));sort($expected_targets);if($current_targets!==$expected_targets)return new WP_Error('stale','The set of products matching this bulk operation changed after review. Create a fresh proposal.');}
 	foreach($check_ids as $id){
