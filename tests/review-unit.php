@@ -10,6 +10,8 @@ function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags)
 function hsm_canonical($value) { return $value; }
 function wc_get_product_id_by_sku($sku) { return array('SKU-EXISTING' => 42, 'VAR-EXISTING' => 84)[$sku] ?? 0; }
 function hsm_product_id($input) { return !empty($input['id']) ? (int)$input['id'] : wc_get_product_id_by_sku((string)($input['sku'] ?? '')); }
+function is_wp_error($value) { return false; }
+function hsm_apply_undo($entries) { return $GLOBALS['review_mock_undo_result'] ?? array(); }
 class ReviewTestProduct {
     private $id;
     private $type;
