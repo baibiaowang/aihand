@@ -26,3 +26,5 @@ jobs:
             echo "Linting $f"
             php -l "$f"
           done
+      - name: Run review helper regression tests
+        run: php tests/review-unit.php
