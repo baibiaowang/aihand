@@ -163,6 +163,39 @@ function hsm_review_validate($d) {
 		$store_option_map=array('currency'=>'woocommerce_currency','base_country'=>'woocommerce_default_country','allowed_countries'=>'woocommerce_allowed_countries','specific_allowed_countries'=>'woocommerce_specific_allowed_countries','ship_to_countries'=>'woocommerce_ship_to_countries','calc_taxes'=>'woocommerce_calc_taxes','prices_include_tax'=>'woocommerce_prices_include_tax','tax_display_shop'=>'woocommerce_tax_display_shop','tax_display_cart'=>'woocommerce_tax_display_cart','enable_coupons'=>'woocommerce_enable_coupons','weight_unit'=>'woocommerce_weight_unit','dimension_unit'=>'woocommerce_dimension_unit','price_decimals'=>'woocommerce_price_num_decimals','store_address'=>'woocommerce_store_address','store_city'=>'woocommerce_store_city','store_postcode'=>'woocommerce_store_postcode','enable_reviews'=>'woocommerce_enable_reviews','review_rating_verification_required'=>'woocommerce_review_rating_verification_required','manage_stock'=>'woocommerce_manage_stock','notify_low_stock_amount'=>'woocommerce_notify_low_stock_amount','hold_stock_minutes'=>'woocommerce_hold_stock_minutes','enable_guest_checkout'=>'woocommerce_enable_guest_checkout','blogname'=>'blogname','blogdescription'=>'blogdescription','timezone_string'=>'timezone_string','blog_public'=>'blog_public');
 		foreach($raw_preview as $key=>$change){if(isset($store_option_map[$key])&&is_array($change)&&array_key_exists('from',$change)&&wp_json_encode(get_option($store_option_map[$key],null))!==wp_json_encode($change['from']))return new WP_Error('stale','Store setting "'.$key.'" changed after this proposal was created. Refresh the proposal.');}
 	}
+	// Shipping zones affect checkout availability; reject proposals if the zone or its methods changed while awaiting approval.
+	if ( preg_match( '/shipping-manage$/', $d['ability'] ?? '' ) && in_array( $d['input']['action'] ?? '', array( 'upsert_zone', 'delete_zone' ), true ) ) {
+		$snapshot = $raw_preview['zone_snapshot'] ?? null;
+		$zone_id = (int) ( $raw_preview['zone_id'] ?? 0 );
+		if ( $zone_id > 0 ) {
+			$zone = class_exists( 'WC_Shipping_Zone' ) ? new WC_Shipping_Zone( $zone_id ) : false;
+			if ( ! $zone || (int) $zone->get_id() !== $zone_id ) return new WP_Error( 'stale', 'The shipping zone no longer exists. Refresh the proposal.' );
+			$methods = array();
+			foreach ( $zone->get_shipping_methods() as $method ) $methods[] = array( 'instance_id' => $method->instance_id, 'type' => $method->id, 'title' => $method->get_title(), 'enabled' => 'yes' === $method->enabled, 'cost' => $method->get_option( 'cost' ), 'min_amount' => $method->get_option( 'min_amount' ), 'requires' => $method->get_option( 'requires' ) );
+			$live = array( 'id' => $zone->get_id(), 'name' => $zone->get_zone_name(), 'regions' => array_map( function ( $location ) { return $location->type . ':' . $location->code; }, $zone->get_zone_locations() ), 'methods' => $methods );
+			if ( ! is_array( $snapshot ) || wp_json_encode( $live ) !== wp_json_encode( $snapshot ) ) return new WP_Error( 'stale', 'The shipping zone, regions, or methods changed after review. Refresh the proposal before executing.' );
+		} elseif ( 'upsert_zone' === ( $d['input']['action'] ?? '' ) && ! empty( $d['input']['zone_name'] ) ) {
+			foreach ( WC_Shipping_Zones::get_zones() as $candidate ) if ( 0 === strcasecmp( (string) $candidate['zone_name'], (string) $d['input']['zone_name'] ) ) return new WP_Error( 'stale', 'A shipping zone with this name appeared after review. Refresh the proposal.' );
+		}
+	}
+	// Tax changes must be based on the same rate rows the owner reviewed.
+	if ( preg_match( '/tax-manage$/', $d['ability'] ?? '' ) && function_exists( 'wc_tax_enabled' ) && isset( $raw_preview['action'] ) ) {
+		global $wpdb;
+		if ( 'delete' === $raw_preview['action'] ) {
+			$current = WC_Tax::_get_tax_rate( (int) ( $raw_preview['rate_id'] ?? 0 ) );
+			if ( ! $current || wp_json_encode( $current ) !== wp_json_encode( $raw_preview['tax_snapshot'] ?? null ) ) return new WP_Error( 'stale', 'The tax rate changed or was deleted after review. Refresh the proposal.' );
+		} elseif ( 'clear_class' === $raw_preview['action'] ) {
+			$class = (string) ( $raw_preview['class'] ?? '' );
+			$ids = $wpdb->get_col( $wpdb->prepare( "SELECT tax_rate_id FROM {$wpdb->prefix}woocommerce_tax_rates WHERE tax_rate_class=%s ORDER BY tax_rate_id", $class ) );
+			$current = array();
+			foreach ( $ids as $tax_id ) { $row = WC_Tax::_get_tax_rate( (int) $tax_id ); if ( $row ) $current[] = $row; }
+			if ( wp_json_encode( $current ) !== wp_json_encode( $raw_preview['tax_snapshot'] ?? null ) ) return new WP_Error( 'stale', 'Tax rates in this class changed after review. Refresh the proposal before deleting them.' );
+		} elseif ( 'add' === $raw_preview['action'] ) {
+			$class = (string) ( $raw_preview['class'] ?? '' );
+			$current = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}woocommerce_tax_rates WHERE tax_rate_class=%s ORDER BY tax_rate_id", $class ), ARRAY_A );
+			if ( wp_json_encode( $current ) !== wp_json_encode( $raw_preview['tax_class_snapshot'] ?? null ) ) return new WP_Error( 'stale', 'Tax rates in this class changed after review. Refresh the proposal before adding more rates.' );
+		}
+	}
 	if(!empty($raw_preview['post_snapshot']['id'])){
 		$post=get_post((int)$raw_preview['post_snapshot']['id']);$snap=$raw_preview['post_snapshot'];
 		if(!$post)return new WP_Error('stale','The content item no longer exists. Refresh the proposal.');
