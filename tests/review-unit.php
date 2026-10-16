@@ -68,4 +68,15 @@ $GLOBALS['review_mock_products'] = array(new ReviewTestProduct(1, 'variable', ar
 $candidate_ids = hsm_review_bulk_target_ids(array('items' => array(array('id' => 9)), 'filter' => array('ids' => array(1)), 'changes' => array('set_status' => 'draft')));
 check($candidate_ids === array(1, 2, 3, 9), 'bulk target snapshot must include matched parents, variations and explicit items');
 
-echo "Review helper regression tests passed.\n";
+$GLOBALS['hsm_undo'] = array(array('type' => 'product', 'state' => array('id' => 1)));
+$GLOBALS['review_mock_undo_result'] = array('restored product 1');
+$rollback_ok = hsm_review_rollback_partial('ai-hand/product-upsert');
+check(!empty($rollback_ok['attempted']) && $rollback_ok['ok'] === true, 'rollback should report success when every undo entry has a clean result');
+$GLOBALS['review_mock_undo_result'] = array('product 1 no longer exists');
+$rollback_failed = hsm_review_rollback_partial('ai-hand/product-upsert');
+check($rollback_failed['ok'] === false, 'rollback must not report success when an undo entry could not be restored');
+$GLOBALS['review_mock_undo_result'] = array('restored product 1');
+$rollback_unsupported = hsm_review_rollback_partial('ai-hand/orders-refund');
+check(empty($rollback_unsupported['attempted']), 'rollback helper must not run for unsupported or irreversible abilities');
+
+echo "Review helper regression tests passed.\\n";
