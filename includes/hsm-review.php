@@ -29,8 +29,16 @@ function hsm_review_server_snapshot($input,$preview=array()) {
 }
 function hsm_review_create($ability,$input,$reason,$preview,$token='') {
 	$hash=hsm_review_canonical($ability,$input);
-	$existing=get_posts(array('post_type'=>'hsm_review','post_status'=>'private','posts_per_page'=>1,'meta_key'=>'_hsm_plan_hash','meta_value'=>$hash,'fields'=>'ids'));
-	if($existing)return (int)$existing[0];
+	$existing=get_posts(array('post_type'=>'hsm_review','post_status'=>'private','posts_per_page'=>20,'meta_key'=>'_hsm_plan_hash','meta_value'=>$hash,'fields'=>'ids','orderby'=>'date','order'=>'DESC'));
+	foreach($existing as $existing_id) {
+		$existing_plan=hsm_review_read($existing_id);
+		// Reuse only an actionable proposal. A rejected, expired or executed task must not
+		// suppress a fresh proposal for a later, intentionally repeated operation.
+		if($existing_plan && in_array($existing_plan['status']??'',array('pending','approved'),true)
+			&& empty($existing_plan['expires_at']) || ($existing_plan && in_array($existing_plan['status']??'',array('pending','approved'),true) && strtotime($existing_plan['expires_at'].' UTC')>=time())) {
+			return (int)$existing_id;
+		}
+	}
 	$plan=array('version'=>2,'status'=>'pending','ability'=>$ability,'reason'=>sanitize_text_field($reason),'input'=>$input,'preview'=>hsm_review_server_snapshot($input,$preview),'input_hash'=>$hash,'created_at'=>current_time('mysql',true),'expires_at'=>gmdate('Y-m-d H:i:s',time()+(int)hsm_guard('token_ttl')));
 	$id=wp_insert_post(array('post_type'=>'hsm_review','post_status'=>'private','post_title'=>sanitize_text_field('Pending AI operation: '.$ability),'post_author'=>get_current_user_id(),'post_content'=>wp_slash(wp_json_encode($plan,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))),true);
 	if(is_wp_error($id))return 0;
