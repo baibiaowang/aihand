@@ -510,6 +510,9 @@ hsm_ability( 'content', array(
 		// Every remaining content action writes content or site configuration; require approval before its branch can mutate.
 		$target_post = ! empty( $in['post_id'] ) ? get_post( (int) $in['post_id'] ) : null;
 		$review_preview = array( 'action' => $action, 'input' => $in );
+		if ( 'set_settings' === $action ) {
+			$review_preview['settings_snapshot'] = get_option( 'hsm_content', array() );
+		}
 		if ( $target_post ) {
 			$review_preview['post_snapshot'] = array( 'id' => (int) $target_post->ID, 'status' => $target_post->post_status, 'modified_gmt' => $target_post->post_modified_gmt, 'content_hash' => hash( 'sha256', (string) $target_post->post_content ), 'title' => $target_post->post_title );
 		}
