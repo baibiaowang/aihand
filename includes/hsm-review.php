@@ -158,8 +158,15 @@ function hsm_review_execute($id) {
 	$lock='hsm_review_lock_'.(int)$id;$lock_value=time().':'.get_current_user_id();
 	if(!add_option($lock,$lock_value,'',false)){
 		$existing=(string)get_option($lock,'');$parts=explode(':',$existing,2);$started=(int)($parts[0]??0);
-		if($started>0&&time()-$started>3600){delete_option($lock);if(!add_option($lock,$lock_value,'',false))return new WP_Error('busy','This operation is already being executed.');}
-		else return new WP_Error('busy','This operation is already being executed.');
+		if($started>0&&time()-$started>3600){
+			// Compare-and-delete the exact stale value. A plain delete_option() can remove a
+			// fresh lock written by another request between our read and delete, enabling double execution.
+			global $wpdb;
+			$deleted=$wpdb->delete($wpdb->options,array('option_name'=>$lock,'option_value'=>$existing),array('%s','%s'));
+			if(!$deleted)return new WP_Error('busy','This operation is already being executed.');
+			wp_cache_delete($lock,'options');wp_cache_delete('notoptions','options');
+			if(!add_option($lock,$lock_value,'',false))return new WP_Error('busy','This operation is already being executed.');
+		}else return new WP_Error('busy','This operation is already being executed.');
 	}
 	try {
 		$d=hsm_review_read($id);$v=hsm_review_validate($d);if(is_wp_error($v)){if($v->get_error_code()==='expired')hsm_review_update($id,array('status'=>'expired'));elseif($v->get_error_code()==='stale')hsm_review_update($id,array('status'=>'stale','stale_at'=>current_time('mysql',true),'stale_reason'=>$v->get_error_message()));return $v;}
