@@ -134,6 +134,7 @@ function hsm_review_validate($d) {
 	if(preg_match('/order-refund$/',$d['ability']??'')&&!empty($raw_preview['order'])){
 		$order=function_exists('wc_get_order')?wc_get_order((int)$raw_preview['order']):false;
 		if(!$order)return new WP_Error('stale','The order no longer exists. Refresh the refund proposal.');
+		if(isset($raw_preview['current_status'])&&$order->get_status()!==$raw_preview['current_status'])return new WP_Error('stale','The order status changed after this refund proposal was created. Refresh the proposal.');
 		if(isset($raw_preview['already_refunded'])&&abs((float)$order->get_total_refunded()-(float)$raw_preview['already_refunded'])>0.00001)return new WP_Error('stale','The order refund total changed after this proposal was created. Recalculate the remaining refundable amount.');
 		if(isset($raw_preview['order_total'])&&abs((float)$order->get_total()-(float)$raw_preview['order_total'])>0.00001)return new WP_Error('stale','The order total changed after this refund proposal was created. Refresh the proposal.');
 	}
