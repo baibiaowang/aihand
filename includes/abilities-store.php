@@ -1113,7 +1113,7 @@ hsm_ability( 'shipping-manage', array(
 				if ( ! $z || ! $z->get_id() ) {
 					throw new Exception( 'Zone not found.' );
 				}
-				hsm_confirm( $in, 'Delete shipping zone ' . $z->get_zone_name() . ' — customers there may no longer be able to check out', $describe( $z ) );
+				hsm_confirm( $in, 'Delete shipping zone ' . $z->get_zone_name() . ' — customers there may no longer be able to check out', array( 'zone_snapshot' => $describe( $z ), 'zone_id' => (int) $z->get_id(), 'action' => 'delete_zone' ) );
 				$z->delete();
 				return array( 'deleted' => true );
 			case 'upsert_zone':
@@ -1136,9 +1136,10 @@ hsm_ability( 'shipping-manage', array(
 					}
 				}
 				! empty( $in['replace_methods'] ) && $why[] = 'replaces all existing methods in the zone';
+				$existing_zone = $find();
 				$reason = $why ? 'Shipping change: ' . implode( '; ', $why ) : 'Update shipping zone ' . ( $in['zone_name'] ?? $in['zone_id'] ?? '(new zone)' );
-				hsm_confirm( $in, $reason, array( 'zone' => $in['zone_name'] ?? $in['zone_id'] ?? null, 'regions' => $in['regions'] ?? null, 'methods' => $in['methods'] ?? null ) );
-				$z = $find() ?: new WC_Shipping_Zone();
+				hsm_confirm( $in, $reason, array( 'action' => 'upsert_zone', 'zone_id' => $existing_zone ? (int) $existing_zone->get_id() : 0, 'zone_name' => $in['zone_name'] ?? null, 'zone_snapshot' => $existing_zone ? $describe( $existing_zone ) : null, 'regions' => $in['regions'] ?? null, 'methods' => $in['methods'] ?? null, 'replace_methods' => ! empty( $in['replace_methods'] ) ) );
+				$z = $existing_zone ?: new WC_Shipping_Zone();
 				! empty( $in['zone_name'] ) && $z->set_zone_name( $in['zone_name'] );
 				if ( isset( $in['regions'] ) ) {
 					$locs = array();
@@ -1212,13 +1213,15 @@ hsm_ability( 'tax-manage', array(
 			if ( ! $row ) {
 				throw new Exception( 'Tax rate not found.' );
 			}
-			hsm_confirm( $in, 'Delete tax rate ' . $row['tax_rate_name'], $row );
+			hsm_confirm( $in, 'Delete tax rate ' . $row['tax_rate_name'], array( 'action' => 'delete', 'rate_id' => (int) $in['rate_id'], 'tax_snapshot' => $row ) );
 			WC_Tax::_delete_tax_rate( (int) $in['rate_id'] );
 			return array( 'deleted' => (int) $in['rate_id'] );
 		}
 		if ( 'clear_class' === $in['action'] ) {
-			$ids = $wpdb->get_col( $wpdb->prepare( "SELECT tax_rate_id FROM {$wpdb->prefix}woocommerce_tax_rates WHERE tax_rate_class=%s", $class ) );
-			hsm_confirm( $in, 'Delete all ' . count( $ids ) . ' tax rates in class "' . ( $class ?: 'standard' ) . '"', array( 'count' => count( $ids ) ) );
+			$ids = $wpdb->get_col( $wpdb->prepare( "SELECT tax_rate_id FROM {$wpdb->prefix}woocommerce_tax_rates WHERE tax_rate_class=%s ORDER BY tax_rate_id", $class ) );
+			$tax_rows = array();
+			foreach ( $ids as $tax_id ) { $tax_row = WC_Tax::_get_tax_rate( (int) $tax_id ); if ( $tax_row ) { $tax_rows[] = $tax_row; } }
+			hsm_confirm( $in, 'Delete all ' . count( $ids ) . ' tax rates in class "' . ( $class ?: 'standard' ) . '"', array( 'action' => 'clear_class', 'class' => $class, 'tax_snapshot' => $tax_rows ) );
 			foreach ( $ids as $id ) {
 				WC_Tax::_delete_tax_rate( $id );
 			}
@@ -1233,7 +1236,8 @@ hsm_ability( 'tax-manage', array(
 				throw new HSM_Blocked( 'Each tax rate needs a 2-letter country code.' );
 			}
 		}
-		hsm_confirm( $in, 'Add ' . count( (array) ( $in['rates'] ?? array() ) ) . ' tax rate(s)', array( 'class' => $class, 'rates' => $in['rates'] ?? array() ) );
+		$existing_rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}woocommerce_tax_rates WHERE tax_rate_class=%s ORDER BY tax_rate_id", $class ), ARRAY_A );
+		hsm_confirm( $in, 'Add ' . count( (array) ( $in['rates'] ?? array() ) ) . ' tax rate(s)', array( 'action' => 'add', 'class' => $class, 'rates' => $in['rates'] ?? array(), 'tax_class_snapshot' => $existing_rows ) );
 		foreach ( (array) ( $in['rates'] ?? array() ) as $r ) {
 			$id = WC_Tax::_insert_tax_rate( array(
 				'tax_rate_country'  => strtoupper( $r['country'] ?? '' ),
