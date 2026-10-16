@@ -10,15 +10,15 @@ function hsm_review_canonical($ability,$input) {
 	unset($input['confirm_token']);
 	return hash('sha256',$ability.'|'.wp_json_encode(hsm_canonical($input)));
 }
-function hsm_review_extract_ids($value,&$ids=array()) {
+function hsm_review_extract_ids($value,&$ids=array(),$ability='') {
 	if(is_array($value)) foreach($value as $k=>$v) {
-		if(in_array($k,array('id','product_id','variation_id'),true)&&is_numeric($v)&&(int)$v>0)$ids[]=(int)$v;
-		hsm_review_extract_ids($v,$ids);
+		if((in_array($k,array('product_id','variation_id'),true)||($k==='id'&&preg_match('/product|products-bulk/i',$ability)))&&is_numeric($v)&&(int)$v>0)$ids[]=(int)$v;
+		hsm_review_extract_ids($v,$ids,$ability);
 	}
 	return array_values(array_unique($ids));
 }
 function hsm_review_server_snapshot($input,$preview=array()) {
-	$ids=hsm_review_extract_ids($input);$products=array();
+	$ids=hsm_review_extract_ids($input,$tmp=array(),$GLOBALS['hsm_current_ability']??'');$products=array();
 	foreach($ids as $id) {
 		if(!function_exists('wc_get_product'))break;
 		$p=wc_get_product($id);if(!$p)continue;
@@ -58,7 +58,7 @@ function hsm_review_validate($d) {
 	if(hsm_review_canonical($d['ability'],$d['input'])!==($d['input_hash']??''))return new WP_Error('tampered','Operation plan changed after it was created.');
 	if(empty(HSM_Registry::$abilities[$d['ability']]))return new WP_Error('ability_missing','The original AI ability is no longer available.');
 	$stored_products=$d['preview']['products']??array();
-	foreach(hsm_review_extract_ids($d['input']) as $id){
+	foreach(hsm_review_extract_ids($d['input'],$tmp=array(),$d['ability']??'') as $id){
 		if(!function_exists('wc_get_product'))continue;
 		$p=wc_get_product($id);if(!$p)return new WP_Error('stale','A referenced product no longer exists.');
 		$old=null;foreach($stored_products as $sp)if((int)($sp['id']??0)===$id){$old=$sp;break;}
