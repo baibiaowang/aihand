@@ -138,12 +138,14 @@ function hsm_review_rollback_partial($ability) {
 		$entries=(array)$GLOBALS['hsm_undo'];
 		$details=hsm_apply_undo($entries);
 		$details=is_array($details)?$details:array($details);
-		$ok=count($details)>=count($entries);$safe_details=array();
+		// hsm_apply_undo must return exactly one non-empty success message per undo entry.
+		// False, numeric, empty, missing or extra results are not proof that restoration succeeded.
+		$ok=count($details)===count($entries);$safe_details=array();
 		foreach($details as $detail) {
 			if(is_wp_error($detail)) {$ok=false;$safe_details[]=$detail->get_error_message();continue;}
-			if(!is_scalar($detail)) {$ok=false;$safe_details[]=wp_json_encode($detail,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);continue;}
-			$message=(string)$detail;
-			if(preg_match('/no longer exists|failed|error|could not|cannot restore/i',$message))$ok=false;
+			if(!is_string($detail)) {$ok=false;$safe_details[]=is_scalar($detail)?(string)$detail:wp_json_encode($detail,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);continue;}
+			$message=trim($detail);
+			if($message===''||preg_match('/no longer exists|failed|error|could not|cannot restore/i',$message))$ok=false;
 			$safe_details[]=$message;
 		}
 		return array('attempted'=>true,'ok'=>$ok,'details'=>$safe_details,'verification'=>'best_effort_log_check');
