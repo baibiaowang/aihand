@@ -231,8 +231,12 @@ function hsm_confirm( $in, $reason, $preview = array() ) {
 	// Strip legacy tokens before persisting the proposal. They are not accepted as approval.
 	$proposal_input = $in;
 	unset( $proposal_input['confirm_token'] );
-	if ( function_exists( 'hsm_review_create' ) ) {
-		hsm_review_create( $ability, $proposal_input, $reason, $preview );
+	if ( ! function_exists( 'hsm_review_create' ) ) {
+		throw new RuntimeException( 'The review system is unavailable; no operation was executed.' );
+	}
+	$review_id = hsm_review_create( $ability, $proposal_input, $reason, $preview );
+	if ( ! $review_id ) {
+		throw new RuntimeException( 'The review task could not be saved. No operation was executed; check WordPress permissions and database errors before retrying.' );
 	}
 	throw new HSM_Confirm_Required( $reason, $preview, '' );
 }
