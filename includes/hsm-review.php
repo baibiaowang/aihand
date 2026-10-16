@@ -142,7 +142,7 @@ function hsm_review_execute($id) {
 	$lock='hsm_review_lock_'.(int)$id;$lock_value=time().':'.get_current_user_id();
 	if(!add_option($lock,$lock_value,'',false)){
 		$existing=(string)get_option($lock,'');$parts=explode(':',$existing,2);$started=(int)($parts[0]??0);
-		if($started>0&&time()-$started>900){delete_option($lock);if(!add_option($lock,$lock_value,'',false))return new WP_Error('busy','This operation is already being executed.');}
+		if($started>0&&time()-$started>3600){delete_option($lock);if(!add_option($lock,$lock_value,'',false))return new WP_Error('busy','This operation is already being executed.');}
 		else return new WP_Error('busy','This operation is already being executed.');
 	}
 	try {
