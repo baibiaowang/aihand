@@ -58,6 +58,46 @@ function hsm_seo_review_snapshot( $items ) {
 	return $snapshots;
 }
 
+function hsm_seo_review_changes( $items, $snapshots ) {
+	$changes = array();
+	$meta_labels = array(
+		'_hsm_seo_title' => 'SEO title', '_hsm_seo_description' => 'SEO description',
+		'_hsm_seo_focus_keyword' => 'Focus keyword', '_hsm_seo_canonical' => 'Canonical URL',
+		'_hsm_seo_noindex' => 'Noindex', '_hsm_seo_nofollow' => 'Nofollow',
+		'_hsm_seo_og_image' => 'Open Graph image', '_hsm_seo_gtin' => 'GTIN metadata',
+		'_hsm_seo_mpn' => 'MPN', '_hsm_seo_brand' => 'Brand', '_hsm_seo_condition' => 'Condition',
+		'_hsm_google_category' => 'Google category', '_hsm_feed_exclude' => 'Exclude from feed',
+	);
+	foreach ( (array) $items as $index => $item ) {
+		$snapshot = $snapshots[ $index ] ?? array();
+		if ( ! is_array( $item ) || ! is_array( $snapshot ) ) continue;
+		foreach ( (array) ( $snapshot['meta'] ?? array() ) as $key => $before ) {
+			if ( 'term' === ( $snapshot['kind'] ?? '' ) ) {
+				$field = $key;
+				$label = 'Category SEO ' . $field;
+				$after = $item[ $field ] ?? $before;
+			} else {
+				$field = array_search( $key, array(
+					'title' => '_hsm_seo_title', 'description' => '_hsm_seo_description',
+					'focus_keyword' => '_hsm_seo_focus_keyword', 'canonical' => '_hsm_seo_canonical',
+					'noindex' => '_hsm_seo_noindex', 'nofollow' => '_hsm_seo_nofollow',
+					'og_image' => '_hsm_seo_og_image', 'gtin' => '_hsm_seo_gtin',
+					'mpn' => '_hsm_seo_mpn', 'brand' => '_hsm_seo_brand', 'condition' => '_hsm_seo_condition',
+					'google_category' => '_hsm_google_category', 'feed_exclude' => '_hsm_feed_exclude',
+				), true );
+				if ( false === $field ) continue;
+				$label = $meta_labels[ $key ] ?? $field;
+				$after = $item[ $field ] ?? $before;
+			}
+			$changes[] = array( 'id' => $snapshot['id'] ?? ( $item['term'] ?? $item['id'] ?? $item['sku'] ?? '' ), 'field' => $label, 'before' => $before, 'after' => $after );
+		}
+		if ( array_key_exists( 'global_unique_id', $snapshot ) && array_key_exists( 'gtin', $item ) ) {
+			$changes[] = array( 'id' => $snapshot['id'] ?? '', 'field' => 'WooCommerce product GTIN', 'before' => $snapshot['global_unique_id'], 'after' => $item['gtin'] );
+		}
+	}
+	return $changes;
+}
+
 hsm_ability( 'seo-update', array(
 	'label'       => 'Set SEO fields for products, posts, pages or categories',
 	'description' => 'Bulk-capable. items: [{id (post/product id) | sku | term (category name/id with taxonomy), title, description, focus_keyword, canonical, noindex, nofollow, og_image, gtin, mpn, brand, condition (new|used|refurbished), google_category, feed_exclude}]. Empty string clears a field. Returns lengths so you can keep titles ≈50-60 and descriptions ≈140-160 characters.',
@@ -74,7 +114,8 @@ hsm_ability( 'seo-update', array(
 			throw new HSM_Blocked( 'Too many items in one call (guard max_bulk_items).' );
 		}
 		// All SEO metadata changes need explicit review, not only noindex changes.
-		hsm_confirm( $in, 'Update SEO fields for ' . count( $in['items'] ) . ' item(s)', array( 'items' => $in['items'], 'seo_snapshot' => hsm_seo_review_snapshot( $in['items'] ) ) );
+		$seo_snapshot = hsm_seo_review_snapshot( $in['items'] );
+		hsm_confirm( $in, 'Update SEO fields for ' . count( $in['items'] ) . ' item(s)', array( 'items' => $in['items'], 'seo_snapshot' => $seo_snapshot, 'changes' => hsm_seo_review_changes( $in['items'], $seo_snapshot ) ) );
 		$noidx = array_filter( (array) $in['items'], function ( $it ) { return ! empty( $it['noindex'] ) && filter_var( $it['noindex'], FILTER_VALIDATE_BOOLEAN ); } );
 		if ( $noidx ) {
 			hsm_confirm( $in, count( $noidx ) . ' item(s) will be hidden from search engines (noindex)', array_values( array_map( function ( $it ) { return $it['id'] ?? $it['sku'] ?? $it['term'] ?? null; }, $noidx ) ) );
