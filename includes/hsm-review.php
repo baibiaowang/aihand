@@ -132,6 +132,11 @@ function hsm_review_approve($id) {
 	if($d['status']!=='pending')return new WP_Error('invalid_state','Only pending reviews can be approved.');
 	hsm_review_update($id,array('status'=>'approved','approved_by'=>get_current_user_id(),'approved_at'=>current_time('mysql',true)));hsm_review_audit($id,'approved');return true;
 }
+function hsm_review_rollback_partial($ability) {
+	if(!preg_match('/(?:product-upsert|products-bulk-update)$/',$ability)||empty($GLOBALS['hsm_undo'])||!function_exists('hsm_apply_undo'))return array('attempted'=>false,'ok'=>null,'details'=>array());
+	try{$details=hsm_apply_undo($GLOBALS['hsm_undo']);return array('attempted'=>true,'ok'=>true,'details'=>$details);}
+	catch(Throwable $e){return array('attempted'=>true,'ok'=>false,'error'=>$e->getMessage());}
+}
 function hsm_review_execute($id) {
 	if(!hsm_review_can_approve())return new WP_Error('forbidden','Only store managers may execute approved AI operations.');
 	$lock='hsm_review_lock_'.(int)$id;if(!add_option($lock,(string)get_current_user_id(),'',false))return new WP_Error('busy','This operation is already being executed.');
@@ -142,10 +147,10 @@ function hsm_review_execute($id) {
 		$GLOBALS['hsm_review_execution']=array('id'=>(int)$id,'ability'=>$d['ability'],'input_hash'=>$d['input_hash']);
 		hsm_review_update($id,array('status'=>'executing','executed_by'=>get_current_user_id(),'executing_at'=>current_time('mysql',true)));hsm_review_audit($id,'execution_started');
 		$result=hsm_run_ability($d['ability'],$ref,$d['input']);
-		if(is_wp_error($result)){hsm_review_update($id,array('status'=>'execution_error','error'=>$result->get_error_message()));hsm_review_audit($id,'execution_error',array('message'=>$result->get_error_message()));return $result;}
+		if(is_wp_error($result)){$rollback=hsm_review_rollback_partial($d['ability']);hsm_review_update($id,array('status'=>'execution_error','error'=>$result->get_error_message(),'rollback'=>$rollback));hsm_review_audit($id,'execution_error',array('message'=>$result->get_error_message(),'rollback'=>$rollback));return $result;}
 		hsm_review_update($id,array('status'=>'executed','executed_at'=>current_time('mysql',true),'result'=>$result));hsm_review_audit($id,'executed');return $result;
 	} catch(Throwable $e) {
-		hsm_review_update($id,array('status'=>'execution_error','error'=>$e->getMessage()));hsm_review_audit($id,'execution_error',array('message'=>$e->getMessage()));return new WP_Error('execution_error',$e->getMessage());
+		$failed_plan=isset($d)&&is_array($d)?$d:hsm_review_read($id);$rollback=hsm_review_rollback_partial($failed_plan['ability']??'');hsm_review_update($id,array('status'=>'execution_error','error'=>$e->getMessage(),'rollback'=>$rollback));hsm_review_audit($id,'execution_error',array('message'=>$e->getMessage(),'rollback'=>$rollback));return new WP_Error('execution_error',$e->getMessage().(!empty($rollback['attempted'])?($rollback['ok']?' Product changes were rolled back.':' Automatic rollback failed; inspect the store immediately.'):'' ));
 	} finally {unset($GLOBALS['hsm_review_execution']);delete_option($lock);}
 }
 function hsm_review_reject($id,$reason='') {
@@ -180,6 +185,7 @@ function hsm_review_page() {
 		$page_plan=$d['preview']['raw_preview']??$d['preview'];echo '<details class="hsm-details"><summary>查看完整操作计划（核对所有输入）</summary><pre>'.esc_html(wp_json_encode($page_plan,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)).'</pre></details>';
 		$page_url=$d['preview']['raw_preview']['page_url']??'';if($page_url)echo '<div class="hsm-live"><h3>页面预览</h3><iframe loading="lazy" sandbox="allow-same-origin" src="'.esc_url($page_url).'"></iframe></div>';
 		if(!empty($d['error']))echo '<div class="notice notice-error inline"><p>'.esc_html($d['error']).'</p></div>';
+		if(!empty($d['rollback']['attempted']))echo '<div class="notice '.(!empty($d['rollback']['ok'])?'notice-success':'notice-error').' inline"><p>'.(!empty($d['rollback']['ok'])?'已尝试回滚商品修改：':'自动回滚未能确认成功：').esc_html(isset($d['rollback']['details'])?implode('; ',array_map('strval',(array)$d['rollback']['details'])):($d['rollback']['error']??'请检查商品状态')).'</p></div>';
 		if($d['status']==='pending')echo '<div class="hsm-actions"><form method="post"><input type="hidden" name="hsm_review_nonce" value="'.esc_attr($nonce).'"><input type="hidden" name="hsm_review_id" value="'.(int)$p->ID.'"><input type="hidden" name="hsm_review_action" value="approve"><button class="button button-primary">批准</button></form><form method="post"><input type="hidden" name="hsm_review_nonce" value="'.esc_attr($nonce).'"><input type="hidden" name="hsm_review_id" value="'.(int)$p->ID.'"><input type="hidden" name="hsm_review_action" value="reject"><input type="text" name="hsm_reject_reason" placeholder="拒绝原因（可选）"><button class="button">拒绝</button></form></div>';
 		elseif($d['status']==='approved')echo '<div class="hsm-actions"><form method="post"><input type="hidden" name="hsm_review_nonce" value="'.esc_attr($nonce).'"><input type="hidden" name="hsm_review_id" value="'.(int)$p->ID.'"><input type="hidden" name="hsm_review_action" value="execute"><button class="button button-primary">执行已批准操作</button></form></div>';
 		if(!empty($d['audit'])){echo '<details class="hsm-details"><summary>审核记录</summary><ul>';foreach($d['audit'] as $a)echo '<li>'.esc_html($a['event']??'').' · '.esc_html($a['time']??'').' · user #'.(int)($a['user']??0).'</li>';echo '</ul></details>';}
