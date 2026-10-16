@@ -124,6 +124,35 @@ function hsm_review_validate($d) {
 			foreach($live as $key=>$value)if(array_key_exists($key,$old)&&wp_json_encode($value)!==wp_json_encode($old[$key]))return new WP_Error('stale',"Product #$id changed since this proposal was created ($key). Refresh the proposal before executing.");
 		}
 	}
+	// SEO proposals must not overwrite metadata changed by a person/plugin after approval.
+	if ( preg_match( '/seo-update$/', $d['ability'] ?? '' ) ) {
+		foreach ( (array) ( $raw_preview['seo_snapshot'] ?? array() ) as $snapshot ) {
+			if ( ! empty( $snapshot['missing'] ) ) {
+				if ( 'term' === ( $snapshot['kind'] ?? '' ) ) {
+					$tax = $snapshot['taxonomy'] ?? 'product_cat';
+					$term = is_numeric( $snapshot['ref'] ?? null ) ? get_term( (int) $snapshot['ref'], $tax ) : get_term_by( 'name', (string) ( $snapshot['ref'] ?? '' ), $tax );
+					if ( $term && ! is_wp_error( $term ) ) return new WP_Error( 'stale', 'A SEO category target now exists or resolves differently. Refresh the proposal before executing.' );
+				} else {
+					$id = ! empty( $snapshot['ref'] ) && is_numeric( $snapshot['ref'] ) ? (int) $snapshot['ref'] : ( ! empty( $snapshot['ref'] ) && function_exists( 'wc_get_product_id_by_sku' ) ? (int) wc_get_product_id_by_sku( (string) $snapshot['ref'] ) : 0 );
+					if ( $id && get_post( $id ) ) return new WP_Error( 'stale', 'A SEO content target now exists or resolves differently. Refresh the proposal before executing.' );
+				}
+				continue;
+			}
+			if ( 'term' === ( $snapshot['kind'] ?? '' ) ) {
+				$term = get_term( (int) ( $snapshot['id'] ?? 0 ), $snapshot['taxonomy'] ?? 'product_cat' );
+				if ( ! $term || is_wp_error( $term ) ) return new WP_Error( 'stale', 'The SEO category no longer exists. Refresh the proposal.' );
+				foreach ( (array) ( $snapshot['meta'] ?? array() ) as $field => $expected ) if ( wp_json_encode( get_term_meta( (int) $snapshot['id'], '_hsm_seo_' . $field, true ) ) !== wp_json_encode( $expected ) ) return new WP_Error( 'stale', 'SEO category metadata changed after review. Refresh the proposal.' );
+			} else {
+				$id = (int) ( $snapshot['id'] ?? 0 );
+				if ( ! $id || ! get_post( $id ) ) return new WP_Error( 'stale', 'The SEO content target no longer exists. Refresh the proposal.' );
+				foreach ( (array) ( $snapshot['meta'] ?? array() ) as $meta_key => $expected ) if ( wp_json_encode( get_post_meta( $id, $meta_key, true ) ) !== wp_json_encode( $expected ) ) return new WP_Error( 'stale', 'SEO metadata changed after review. Refresh the proposal to avoid overwriting newer values.' );
+				if ( array_key_exists( 'global_unique_id', $snapshot ) ) {
+					$product = function_exists( 'wc_get_product' ) ? wc_get_product( $id ) : false;
+					if ( ! $product || ! method_exists( $product, 'get_global_unique_id' ) || wp_json_encode( $product->get_global_unique_id() ) !== wp_json_encode( $snapshot['global_unique_id'] ) ) return new WP_Error( 'stale', 'The product GTIN changed after review. Refresh the proposal.' );
+				}
+			}
+		}
+	}
 	// Revalidate high-impact non-product targets too; their state can change while a review waits for approval.
 	$raw_preview=$d['preview']['raw_preview']??array();
 	$settings_option_map=array('/seo-settings$/' =>'hsm_seo','/conversion$/' =>'hsm_conversion','/marketing$/' =>'hsm_marketing','/shipping-rules$/' =>'hsm_shipping_rules','/shipments$/' =>'hsm_shipments');
