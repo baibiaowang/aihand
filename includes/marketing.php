@@ -253,6 +253,7 @@ hsm_ability( 'marketing', array(
 				throw new Exception( 'user_id and product_id are required.' );
 			}
 			$list = array_values( array_filter( array_map( 'absint', (array) get_user_meta( $uid, '_hsm_wishlist', true ) ) ) );
+			hsm_confirm( $in, ( 'wishlist_add' === $action ? 'Add product to' : 'Remove product from' ) . ' customer #' . $uid . ' wishlist', array( 'user_id' => $uid, 'product_id' => $pid, 'current_wishlist' => $list, 'action' => $action ) );
 			if ( 'wishlist_add' === $action ) {
 				if ( ! in_array( $pid, $list, true ) ) {
 					$list[] = $pid;
@@ -300,7 +301,8 @@ hsm_ability( 'marketing', array(
 			}
 			$new[ $key ] = $out;
 		}
-		$why && hsm_confirm( $in, 'Marketing settings: ' . implode( '; ', $why ), array() );
+		$reason = $why ? 'Marketing settings: ' . implode( '; ', $why ) : 'Update marketing and retention settings: ' . implode( ', ', array_keys( $incoming ) );
+		hsm_confirm( $in, $reason, array( 'before' => $before, 'after' => $new ) );
 		hsm_undo_add( array( 'type' => 'option', 'name' => 'hsm_marketing', 'old' => $before ) );
 		update_option( 'hsm_marketing', $new );
 		return array( 'action' => 'set_settings', 'changed' => array_keys( $incoming ), 'settings' => hsm_mkt_settings() );
