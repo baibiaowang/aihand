@@ -196,6 +196,29 @@ function hsm_review_validate($d) {
 			if ( wp_json_encode( $current ) !== wp_json_encode( $raw_preview['tax_class_snapshot'] ?? null ) ) return new WP_Error( 'stale', 'Tax rates in this class changed after review. Refresh the proposal before adding more rates.' );
 		}
 	}
+	// Plugin/theme installs and activation can change executable site code; ensure the reviewed target state is still current.
+	if ( preg_match( '/site-extensions$/', $d['ability'] ?? '' ) && isset( $raw_preview['extension_snapshot'] ) ) {
+		$action = (string) ( $raw_preview['action'] ?? '' );
+		$expected = (array) $raw_preview['extension_snapshot'];
+		$slug = (string) ( $raw_preview['slug'] ?? '' );
+		if ( 'permalinks' === $action ) {
+			if ( wp_json_encode( get_option( 'permalink_structure' ) ) !== wp_json_encode( $expected['permalink_structure'] ?? null ) ) return new WP_Error( 'stale', 'The permalink structure changed after review. Refresh the proposal.' );
+		} elseif ( in_array( $action, array( 'install_plugin', 'activate_plugin', 'deactivate_plugin', 'update_plugin' ), true ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+			$plugins = get_plugins();
+			$plugin_file = null;
+			foreach ( $plugins as $file => $data ) if ( dirname( $file ) === $slug || $file === $slug || basename( $file, '.php' ) === $slug ) { $plugin_file = $file; break; }
+			$version = $plugin_file && isset( $plugins[ $plugin_file ] ) ? ( $plugins[ $plugin_file ]['Version'] ?? null ) : null;
+			$active = $plugin_file ? is_plugin_active( $plugin_file ) : false;
+			if ( $plugin_file !== ( $expected['plugin_file'] ?? null ) || wp_json_encode( $version ) !== wp_json_encode( $expected['plugin_version'] ?? null ) || (bool) $active !== (bool) ( $expected['plugin_active'] ?? false ) ) return new WP_Error( 'stale', 'The target plugin installation, version, or activation state changed after review. Refresh the proposal.' );
+		} elseif ( in_array( $action, array( 'install_theme', 'activate_theme' ), true ) ) {
+			$theme = wp_get_theme( $slug );
+			$exists = $theme && $theme->exists();
+			$version = $exists ? $theme->get( 'Version' ) : null;
+			if ( (bool) $exists !== (bool) ( $expected['theme_exists'] ?? false ) || wp_json_encode( $version ) !== wp_json_encode( $expected['theme_version'] ?? null ) ) return new WP_Error( 'stale', 'The target theme installation or version changed after review. Refresh the proposal.' );
+			if ( 'activate_theme' === $action && get_stylesheet() !== ( $expected['active_theme'] ?? '' ) ) return new WP_Error( 'stale', 'The active theme changed after review. Refresh the proposal before switching themes.' );
+		}
+	}
 	if(!empty($raw_preview['post_snapshot']['id'])){
 		$post=get_post((int)$raw_preview['post_snapshot']['id']);$snap=$raw_preview['post_snapshot'];
 		if(!$post)return new WP_Error('stale','The content item no longer exists. Refresh the proposal.');
