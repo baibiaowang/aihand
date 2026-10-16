@@ -290,6 +290,15 @@ hsm_ability( 'rest-request', array(
 			throw new HSM_Blocked( 'rest_route, _method, _envelope and _jsonp are not allowed in rest-request paths; use "path" and "method".' );
 		}
 		$p     = preg_replace( '#/+#', '/', $p );
+		// Even GET is not an unrestricted data exfiltration channel. Dedicated tools own
+		// customers, orders, settings and site administration; the escape hatch only exposes
+		// a small read-only WooCommerce reporting/product surface unless explicitly extended.
+		if ( 'GET' === $method && ! preg_match( '#^/(wc/v\\d+)/(products|reports)(/|$)#', $p ) ) {
+			$allowed_read = (bool) apply_filters( 'hsm_allow_rest_read', false, $method, $parts['path'], $in['params'] ?? array() );
+			if ( ! $allowed_read ) {
+				throw new HSM_Blocked( 'rest-request only permits safe WooCommerce product/report reads by default. Use a dedicated tool or explicitly allow this exact read route with hsm_allow_rest_read.' );
+			}
+		}
 		$never = array( '#/application-passwords#', '#^/wp/v2/users/?[^/]*/?$#' => 'write', '#^/mcp#', '#^/hark-store#', '#^/wp/v2/plugins#' => 'write', '#^/wp/v2/themes#' => 'write', '#^/wp/v2/settings#' => 'write', '#^/wp-site-health#' => 'write', '#^/wc/v\d+/settings/advanced#' => 'write', '#^/wc/v\d+/system_status/tools#' => 'write', '#^/wp-abilities#', '#^/wc/v\d+/webhooks#' => 'write', '#^/wp/v2/(posts|pages|templates|template-parts|global-styles|menu-items|navigation|blocks|widgets)(/|$)#' => 'write' );
 		foreach ( $never as $k => $v ) {
 			$rx    = is_int( $k ) ? $v : $k;
