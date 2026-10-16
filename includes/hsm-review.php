@@ -35,7 +35,7 @@ function hsm_review_create($ability,$input,$reason,$preview,$token='') {
 		// Reuse only an actionable proposal. A rejected, expired or executed task must not
 		// suppress a fresh proposal for a later, intentionally repeated operation.
 		if($existing_plan && in_array($existing_plan['status']??'',array('pending','approved'),true)
-			&& empty($existing_plan['expires_at']) || ($existing_plan && in_array($existing_plan['status']??'',array('pending','approved'),true) && strtotime($existing_plan['expires_at'].' UTC')>=time())) {
+			&& (empty($existing_plan['expires_at']) || strtotime($existing_plan['expires_at'].' UTC')>=time())) {
 			return (int)$existing_id;
 		}
 	}
