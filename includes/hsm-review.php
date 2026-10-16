@@ -46,6 +46,8 @@ function hsm_review_execute($id){
 	if(!$ability)return new WP_Error('ability_missing','The original AI ability is no longer available.');
 	$ref=HSM_Registry::$abilities[$d['ability']]??null;
 	if(!$ref)return new WP_Error('ability_missing','The original AI ability definition is unavailable.');
+	// Consume the original AI confirmation token before executing. The human approval is now the gate.
+	delete_transient('hsm_tok_'.preg_replace('/[^A-Za-z0-9]/','',(string)$d['token']));
 	$input=$d['input'];$input['confirm_token']=$d['token'];
 	// The original confirmation token is bound to the AI caller. Approval is the human gate;
 	// this scoped flag lets the already-approved exact plan pass without rebinding it to the approver.
