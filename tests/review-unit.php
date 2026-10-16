@@ -5,6 +5,7 @@
  */
 define('ABSPATH', __DIR__ . '/');
 function add_action(...$args) {}
+function absint($value) { return abs((int)$value); }
 function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags); }
 function hsm_canonical($value) { return $value; }
 function wc_get_product_id_by_sku($sku) { return array('SKU-EXISTING' => 42, 'VAR-EXISTING' => 84)[$sku] ?? 0; }
