@@ -138,14 +138,15 @@ function hsm_review_rollback_partial($ability) {
 		$entries=(array)$GLOBALS['hsm_undo'];
 		$details=hsm_apply_undo($entries);
 		$details=is_array($details)?$details:array($details);
-		$ok=count($details)>=count($entries);
+		$ok=count($details)>=count($entries);$safe_details=array();
 		foreach($details as $detail) {
-			if(is_wp_error($detail)) {$ok=false;continue;}
-			if(!is_scalar($detail)) {$ok=false;continue;}
+			if(is_wp_error($detail)) {$ok=false;$safe_details[]=$detail->get_error_message();continue;}
+			if(!is_scalar($detail)) {$ok=false;$safe_details[]=wp_json_encode($detail,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);continue;}
 			$message=(string)$detail;
 			if(preg_match('/no longer exists|failed|error|could not|cannot restore/i',$message))$ok=false;
+			$safe_details[]=$message;
 		}
-		return array('attempted'=>true,'ok'=>$ok,'details'=>$details,'verification'=>'best_effort_log_check');
+		return array('attempted'=>true,'ok'=>$ok,'details'=>$safe_details,'verification'=>'best_effort_log_check');
 	} catch(Throwable $e) {
 		return array('attempted'=>true,'ok'=>false,'error'=>$e->getMessage());
 	}
