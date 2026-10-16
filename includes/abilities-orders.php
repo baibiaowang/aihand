@@ -490,8 +490,18 @@ hsm_ability( 'customers-manage', array(
 		if ( ! user_can( $uid, 'customer' ) && ! in_array( 'customer', (array) get_userdata( $uid )->roles, true ) && ! in_array( 'subscriber', (array) get_userdata( $uid )->roles, true ) ) {
 			throw new HSM_Blocked( 'That account is staff, not a customer; it cannot be edited here.' );
 		}
-		hsm_confirm( $in, 'Update customer #' . $uid, array( 'action' => 'update', 'customer_id' => $uid, 'changes' => $in ) );
 		$c = new WC_Customer( $uid );
+		$customer_snapshot = array();
+		foreach ( array( 'first_name', 'last_name' ) as $field ) {
+			if ( array_key_exists( $field, $in ) ) $customer_snapshot[ $field ] = 'first_name' === $field ? $c->get_first_name() : $c->get_last_name();
+		}
+		foreach ( array( 'billing', 'shipping' ) as $address_type ) {
+			foreach ( array_keys( (array) ( $in[ $address_type ] ?? array() ) ) as $field ) {
+				$getter = 'get_' . $address_type . '_' . $field;
+				if ( method_exists( $c, $getter ) ) $customer_snapshot[ $address_type ][ $field ] = $c->$getter();
+			}
+		}
+		hsm_confirm( $in, 'Update customer #' . $uid, array( 'action' => 'update', 'customer_id' => $uid, 'changes' => $in, 'customer_snapshot' => $customer_snapshot ) );
 		isset( $in['first_name'] ) && $c->set_first_name( $in['first_name'] );
 		isset( $in['last_name'] ) && $c->set_last_name( $in['last_name'] );
 		foreach ( (array) ( $in['billing'] ?? array() ) as $k => $v ) {
