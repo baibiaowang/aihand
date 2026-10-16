@@ -332,6 +332,7 @@ hsm_ability( 'shipments', array(
 				if ( ! $o ) {
 					throw new Exception( 'Order not found.' );
 				}
+				hsm_confirm( $in, 'Add shipment tracking to order #' . $o->get_order_number(), array( 'order_id' => $o->get_id(), 'carrier' => $in['carrier'] ?? '', 'number' => $in['number'] ?? '', 'url' => $in['url'] ?? '', 'notify_customer' => ! empty( $in['notify_customer'] ) ) );
 				hsm_shipments_add( $o, (string) ( $in['carrier'] ?? '' ), (string) ( $in['number'] ?? '' ), (string) ( $in['url'] ?? '' ) );
 				$list = hsm_shipments_get( $o );
 				$row  = end( $list );
@@ -345,6 +346,7 @@ hsm_ability( 'shipments', array(
 				if ( ! $o ) {
 					throw new Exception( 'Order not found.' );
 				}
+				hsm_confirm( $in, 'Remove shipment tracking from order #' . $o->get_order_number(), array( 'order_id' => $o->get_id(), 'carrier' => $in['carrier'] ?? '', 'number' => $in['number'] ?? '', 'current_shipments' => hsm_shipments_get( $o ) ) );
 				$n = hsm_shipments_remove( $o, (string) ( $in['number'] ?? '' ), (string) ( $in['carrier'] ?? '' ) );
 				return array( 'action' => 'remove', 'order_id' => $o->get_id(), 'removed' => $n, 'shipments' => hsm_shipments_get( $o ) );
 
@@ -353,6 +355,7 @@ hsm_ability( 'shipments', array(
 				if ( '' === trim( $csv ) ) {
 					throw new Exception( 'csv is empty. One "order,carrier,number[,url]" per line.' );
 				}
+				hsm_confirm( $in, 'Import shipment tracking from CSV', array( 'csv_preview' => wp_trim_words( $csv, 80 ) ) );
 				$rows    = preg_split( '/\r\n|\r|\n/', $csv );
 				$ok      = 0;
 				$errors  = array();
@@ -414,6 +417,7 @@ hsm_ability( 'shipments', array(
 					}
 					$new['custom_carriers'] = $clean;
 				}
+				hsm_confirm( $in, 'Update shipment tracking settings', array( 'before' => $before, 'after' => $new ) );
 				hsm_undo_add( array( 'type' => 'option', 'name' => 'hsm_shipments', 'old' => $before ) );
 				update_option( 'hsm_shipments', $new );
 				return array( 'action' => 'set_settings', 'settings' => hsm_shipments_settings(), 'changed' => array_keys( array_intersect_key( $in, array_flip( array( 'enabled', 'notify_email', 'show_account', 'default_carrier', 'custom_carriers' ) ) ) ) );
