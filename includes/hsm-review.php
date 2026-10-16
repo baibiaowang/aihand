@@ -193,6 +193,14 @@ function hsm_review_validate($d) {
 		if(isset($raw_preview['current_status'])&&$order->get_status()!==$raw_preview['current_status'])return new WP_Error('stale','The order status changed after this refund proposal was created. Refresh the proposal.');
 		if(isset($raw_preview['already_refunded'])&&abs((float)$order->get_total_refunded()-(float)$raw_preview['already_refunded'])>0.00001)return new WP_Error('stale','The order refund total changed after this proposal was created. Recalculate the remaining refundable amount.');
 		if(isset($raw_preview['order_total'])&&abs((float)$order->get_total()-(float)$raw_preview['order_total'])>0.00001)return new WP_Error('stale','The order total changed after this refund proposal was created. Refresh the proposal.');
+		foreach((array)($raw_preview['refund_items_snapshot']??array()) as $item_id=>$expected){
+			$item=$order->get_item((int)$item_id);
+			if(!$item)return new WP_Error('stale','An order line item changed or disappeared after refund review. Recalculate the refund.');
+			$product=$item->get_product();
+			$live=array('product_id'=>(int)$item->get_product_id(),'variation_id'=>(int)$item->get_variation_id(),'sku'=>($product?(string)$product->get_sku():''),'quantity'=>(int)$item->get_quantity(),'total'=>(string)$item->get_total(),'total_tax'=>(string)$item->get_total_tax(),'qty_refunded'=>(int)absint($order->get_qty_refunded_for_item((int)$item_id)));
+			if(wp_json_encode($live)!==wp_json_encode($expected))return new WP_Error('stale','An order line item or refunded quantity changed after review. Recalculate the refund before executing.');
+		}
+		if(count((array)($raw_preview['refund_items_snapshot']??array()))!==count($order->get_items()))return new WP_Error('stale','The order line items changed after refund review. Recalculate the refund.');
 	}
 	if(preg_match('/customers-manage$/',$d['ability']??'')){
 		$action=$raw_preview['action']??'';$email=sanitize_email((string)($d['input']['email']??''));
