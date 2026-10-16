@@ -47,6 +47,8 @@ hsm_ability( 'content-upsert', array(
 			hsm_undo_add( array( 'type' => 'option', 'name' => 'page_on_front', 'old' => get_option( 'page_on_front' ) ) );
 			hsm_undo_add( array( 'type' => 'option', 'name' => 'page_for_posts', 'old' => get_option( 'page_for_posts' ) ) );
 		}
+		// All content writes require owner approval, including draft creation and ordinary edits.
+		hsm_confirm( $in, ( ! empty( $cur ) ? 'Update ' . $type . ' "' . $cur->post_title . '"' : 'Create ' . $type . ' "' . ( $in['title'] ?? 'untitled' ) . '"' ), array( 'id' => $cur->ID ?? null, 'type' => $type, 'status' => $status ?? ( $cur->post_status ?? 'draft' ), 'title' => $in['title'] ?? ( $cur->post_title ?? '' ), 'input' => $in ) );
 		if ( ! empty( $cur ) && 'publish' === $cur->post_status && $status && 'publish' !== $status ) {
 			hsm_confirm( $in, 'Unpublish live ' . $type . ' "' . $cur->post_title . '"', array( 'id' => $cur->ID ) );
 		}
