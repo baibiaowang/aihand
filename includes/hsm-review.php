@@ -202,6 +202,20 @@ function hsm_review_validate($d) {
 		}
 		if(count((array)($raw_preview['refund_items_snapshot']??array()))!==count($order->get_items()))return new WP_Error('stale','The order line items changed after refund review. Recalculate the refund.');
 	}
+	if(preg_match('/coupon-manage$/',$d['ability']??'')&&in_array($d['input']['action']??'',array('upsert','delete'),true)){
+		if(!array_key_exists('coupon_snapshot',$raw_preview))return new WP_Error('stale','This coupon proposal lacks a live-state snapshot. Create a fresh review before changing coupons.');
+		$expected=$raw_preview['coupon_snapshot'];
+		$code=function_exists('wc_format_coupon_code')?wc_format_coupon_code((string)($d['input']['code']??'')):(string)($d['input']['code']??'');
+		$live_id=function_exists('wc_get_coupon_id_by_code')?(int)wc_get_coupon_id_by_code($code):0;
+		if(!$expected){
+			if($live_id)return new WP_Error('stale','A coupon with this code was created after review. Refresh the proposal instead of modifying it implicitly.');
+		}else{
+			if(!$live_id||(int)$expected['id']!==$live_id)return new WP_Error('stale','The coupon code now resolves to a different or missing coupon. Refresh the proposal.');
+			$coupon=class_exists('WC_Coupon')?new WC_Coupon($live_id):false;
+			if(!$coupon||wp_json_encode(hsm_coupon_state($coupon))!==wp_json_encode($expected['state']??array()))return new WP_Error('stale','Coupon terms changed after review. Refresh the proposal before updating or deleting it.');
+			if((int)$coupon->get_usage_count()!==(int)($expected['usage_count']??-1))return new WP_Error('stale','Coupon usage changed after review. Refresh the proposal before updating or deleting it.');
+		}
+	}
 	if(preg_match('/taxonomy-manage$/',$d['ability']??'')){
 		$tax=sanitize_key((string)($raw_preview['taxonomy']??$d['input']['taxonomy']??'product_cat'));
 		$action=$d['input']['action']??'';
