@@ -126,6 +126,13 @@ function hsm_review_validate($d) {
 	}
 	// Revalidate high-impact non-product targets too; their state can change while a review waits for approval.
 	$raw_preview=$d['preview']['raw_preview']??array();
+	if(!empty($raw_preview['post_snapshot']['id'])){
+		$post=get_post((int)$raw_preview['post_snapshot']['id']);$snap=$raw_preview['post_snapshot'];
+		if(!$post)return new WP_Error('stale','The content item no longer exists. Refresh the proposal.');
+		if(isset($snap['status'])&&$post->post_status!==$snap['status'])return new WP_Error('stale','The content status changed after this proposal was created. Refresh the proposal.');
+		if(isset($snap['content_hash'])&&hash('sha256',(string)$post->post_content)!==$snap['content_hash'])return new WP_Error('stale','The content body changed after this proposal was created. Review the latest content before executing.');
+		if(isset($snap['title'])&&$post->post_title!==$snap['title'])return new WP_Error('stale','The content title changed after this proposal was created. Refresh the proposal.');
+	}
 	if(preg_match('/order-update$/',$d['ability']??'')&&!empty($raw_preview['order'])){
 		$order=function_exists('wc_get_order')?wc_get_order((int)$raw_preview['order']):false;
 		if(!$order)return new WP_Error('stale','The order no longer exists. Refresh the proposal before executing.');
