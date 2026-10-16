@@ -8,6 +8,17 @@ function add_action(...$args) {}
 function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags); }
 function hsm_canonical($value) { return $value; }
 function wc_get_product_id_by_sku($sku) { return array('SKU-EXISTING' => 42, 'VAR-EXISTING' => 84)[$sku] ?? 0; }
+function hsm_product_id($input) { return !empty($input['id']) ? (int)$input['id'] : wc_get_product_id_by_sku((string)($input['sku'] ?? '')); }
+class ReviewTestProduct {
+    private $id;
+    private $type;
+    private $children;
+    public function __construct($id, $type = 'simple', $children = array()) { $this->id = $id; $this->type = $type; $this->children = $children; }
+    public function get_id() { return $this->id; }
+    public function is_type($type) { return $this->type === $type; }
+    public function get_children() { return $this->children; }
+}
+function wc_get_products($args) { return $GLOBALS['review_mock_products'] ?? array(); }
 require_once dirname(__DIR__) . '/includes/hsm-review.php';
 
 function check($condition, $message) {
@@ -49,5 +60,9 @@ check($other_ids === array(), 'non-product abilities must not treat generic filt
 
 $skus = hsm_review_collect_skus(array('sku' => 'PARENT', 'variations' => array(array('sku' => 'CHILD'))));
 check($skus === array('PARENT', 'CHILD'), 'SKU collection must include nested variation SKUs');
+
+$GLOBALS['review_mock_products'] = array(new ReviewTestProduct(1, 'variable', array(2, 3)));
+$candidate_ids = hsm_review_bulk_target_ids(array('items' => array(array('id' => 9)), 'filter' => array('ids' => array(1)), 'changes' => array('set_status' => 'draft')));
+check($candidate_ids === array(1, 2, 3, 9), 'bulk target snapshot must include matched parents, variations and explicit items');
 
 echo "Review helper regression tests passed.\n";
