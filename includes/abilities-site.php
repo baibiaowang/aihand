@@ -298,7 +298,7 @@ hsm_ability( 'rest-request', array(
 				throw new HSM_Blocked( "rest-request may not call $method {$parts['path']} (sensitive route). Use the dedicated tool or WP Admin." );
 			}
 		}
-		if ( 'GET' !== $method && preg_match( '#^/(wc/v\d+|wc-analytics|wc/store(/v\d+)?)/(customers|webhooks|payment_gateways|system_status/tools|settings/advanced|settings/general|data)#', $p ) ) {
+		if ( preg_match( '#^/(wc/v\d+|wc-analytics|wc/store(/v\d+)?)/(customers|webhooks|payment_gateways|system_status|settings|data)(/|$)#', $p ) ) {
 			throw new HSM_Blocked( "rest-request may not call $method {$parts['path']} (sensitive route: customers, webhooks, payment gateways, system tools). Use WP Admin." );
 		}
 		if ( 'GET' !== $method && preg_match( '#^/wp/v2/(product|shop_order|shop_coupon|shop_order_refund|product_variation|users/me)(/|$)#', $p ) ) {
@@ -307,7 +307,13 @@ hsm_ability( 'rest-request', array(
 		if ( preg_match( '#^/wc/v\d+/(products|orders|coupons|refunds)#', $p ) && 'GET' !== $method ) {
 			throw new HSM_Blocked( 'Use the dedicated product/order/coupon tools for writes — they enforce price floors, confirmation and undo. rest-request is read-only for these routes.' );
 		}
+		// Generic REST is an escape hatch for reads only. A write here could reach a route
+		// added by another plugin and bypass its dedicated AI Hand validation/undo rules.
 		if ( 'GET' !== $method ) {
+			$allowed = (bool) apply_filters( 'hsm_allow_rest_write', false, $method, $parts['path'], $in['params'] ?? array() );
+			if ( ! $allowed ) {
+				throw new HSM_Blocked( 'rest-request is read-only for safety. Use a dedicated AI Hand write tool, or explicitly allow this exact REST route with the hsm_allow_rest_write filter.' );
+			}
 			hsm_confirm( $in, "Raw REST write: $method {$parts['path']} (no undo available)", array( 'method' => $method, 'path' => $parts['path'], 'params' => $in['params'] ?? null ) );
 		}
 		$req    = new WP_REST_Request( $method, $parts['path'] );
