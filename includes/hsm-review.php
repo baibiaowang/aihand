@@ -18,7 +18,7 @@ function hsm_review_extract_ids($value,$ability='',$path=array()) {
 		$is_product_id=in_array($k,array('product_id','variation_id'),true);
 		$is_root_product_id=empty($path)&&$k==='id'&&preg_match('/product-upsert$/',$ability);
 		$is_bulk_item_id=$k==='id'&&in_array('items',$path,true)&&preg_match('/products-bulk-update$/',$ability);
-		$is_filter_id=in_array('ids',$path,true)&&is_numeric($v);
+		$is_filter_id=in_array('ids',$path,true)&&preg_match('/products-bulk-update$/',$ability)&&is_numeric($v);
 		if(($is_product_id||$is_root_product_id||$is_bulk_item_id||$is_filter_id)&&is_numeric($v)&&(int)$v>0)$ids[]=(int)$v;
 		if($k==='sku'&&is_string($v)&&$v!==''&&function_exists('wc_get_product_id_by_sku')){$sku_id=(int)wc_get_product_id_by_sku($v);if($sku_id>0)$ids[]=$sku_id;}
 		$ids=array_merge($ids,hsm_review_extract_ids($v,$ability,$next));
