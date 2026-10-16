@@ -16,6 +16,8 @@ hsm_ability( 'seo-update', array(
 		if ( count( (array) $in['items'] ) > (int) hsm_guard( 'max_bulk_items' ) ) {
 			throw new HSM_Blocked( 'Too many items in one call (guard max_bulk_items).' );
 		}
+		// All SEO metadata changes need explicit review, not only noindex changes.
+		hsm_confirm( $in, 'Update SEO fields for ' . count( $in['items'] ) . ' item(s)', array( 'items' => $in['items'] ) );
 		$noidx = array_filter( (array) $in['items'], function ( $it ) { return ! empty( $it['noindex'] ) && filter_var( $it['noindex'], FILTER_VALIDATE_BOOLEAN ); } );
 		if ( $noidx ) {
 			hsm_confirm( $in, count( $noidx ) . ' item(s) will be hidden from search engines (noindex)', array_values( array_map( function ( $it ) { return $it['id'] ?? $it['sku'] ?? $it['term'] ?? null; }, $noidx ) ) );
