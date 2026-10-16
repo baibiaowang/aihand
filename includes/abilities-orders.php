@@ -195,7 +195,9 @@ hsm_ability( 'order-create', array(
 		if ( ! empty( $in['status'] ) && ! array_key_exists( 'wc-' . $in['status'], wc_get_order_statuses() ) ) {
 			throw new Exception( 'Unknown order status ' . $in['status'] );
 		}
-		$why && hsm_confirm( $in, 'Manual order: ' . implode( '; ', $why ), array( 'items' => array_map( function ( $l ) { return array( 'sku' => $l[0]->get_sku(), 'qty' => $l[1], 'price' => $l[2]['price'] ?? $l[0]->get_price() ); }, $lines ) ) );
+		// Creating an order is always a store mutation, even when no unusual price/status flags were supplied.
+		// Never let the empty-$why path bypass owner review.
+		hsm_confirm( $in, 'Create manual order' . ( $why ? ': ' . implode( '; ', $why ) : '' ), array( 'items' => array_map( function ( $l ) { return array( 'sku' => $l[0]->get_sku(), 'qty' => $l[1], 'price' => $l[2]['price'] ?? $l[0]->get_price() ); }, $lines ) ) );
 		$o = wc_create_order( array( 'created_via' => 'hark-store-mcp' ) );
 		foreach ( (array) $in['items'] as $it ) {
 			$pid = ! empty( $it['product_id'] ) ? (int) $it['product_id'] : wc_get_product_id_by_sku( $it['sku'] ?? '' );
