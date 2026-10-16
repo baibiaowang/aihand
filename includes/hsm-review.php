@@ -45,6 +45,7 @@ function hsm_review_server_snapshot($input,$preview=array()) {
 	$ability=$GLOBALS['hsm_current_ability']??'';
 	$ids=hsm_review_extract_ids($input,$ability);
 	if(!empty($preview['target_ids'])&&is_array($preview['target_ids']))$ids=array_merge($ids,array_map('absint',$preview['target_ids']));
+	if(!empty($preview['candidate_ids'])&&is_array($preview['candidate_ids']))$ids=array_merge($ids,array_map('absint',$preview['candidate_ids']));
 	if(!empty($preview['first_changes'])&&is_array($preview['first_changes']))foreach($preview['first_changes'] as $item)if(!empty($item['id']))$ids[]=(int)$item['id'];
 	$ids=array_values(array_unique(array_filter($ids)));$products=array();
 	foreach($ids as $id) {
@@ -68,7 +69,7 @@ function hsm_review_server_snapshot($input,$preview=array()) {
 		}
 	}
 	$sku_checks=array();if(function_exists('wc_get_product_id_by_sku'))foreach(hsm_review_collect_skus($input) as $sku)$sku_checks[$sku]=(int)wc_get_product_id_by_sku($sku);
-	return array('server_verified_at'=>current_time('mysql',true),'products'=>$products,'sku_checks'=>$sku_checks,'target_ids'=>!empty($preview['target_ids'])?array_values(array_unique(array_map('absint',$preview['target_ids']))):array(),'changes'=>$changes,'raw_preview'=>$preview,'validation'=>array('plan_hash_valid'=>true,'server_snapshot'=>!empty($products),'live_recheck'=>'performed again before execution'));
+	return array('server_verified_at'=>current_time('mysql',true),'products'=>$products,'sku_checks'=>$sku_checks,'target_ids'=>!empty($preview['target_ids'])?array_values(array_unique(array_map('absint',$preview['target_ids']))):array(),'candidate_ids'=>!empty($preview['candidate_ids'])?array_values(array_unique(array_map('absint',$preview['candidate_ids']))):array(),'changes'=>$changes,'raw_preview'=>$preview,'validation'=>array('plan_hash_valid'=>true,'server_snapshot'=>!empty($products),'live_recheck'=>'performed again before execution'));
 }
 function hsm_review_create($ability,$input,$reason,$preview,$token='') {
 	$hash=hsm_review_canonical($ability,$input);
@@ -112,7 +113,7 @@ function hsm_review_validate($d) {
 	$stored_products=$d['preview']['products']??array();
 	foreach((array)($d['preview']['sku_checks']??array()) as $sku=>$expected_id){$actual_id=(int)wc_get_product_id_by_sku((string)$sku);if($actual_id!==(int)$expected_id)return new WP_Error('stale',"SKU {$sku} now resolves to a different product. Refresh the proposal before executing.");}
 	$check_ids=array_merge(hsm_review_extract_ids($d['input'],$d['ability']??''),array_map('absint',(array)($d['preview']['target_ids']??array())),array_map(function($p){return (int)($p['id']??0);},$stored_products));$check_ids=array_values(array_unique(array_filter($check_ids)));
-	if(preg_match('/products-bulk-update$/',$d['ability']??'')){$current_targets=hsm_review_bulk_target_ids($d['input']);$expected_targets=array_values(array_unique(array_map('absint',(array)($d['preview']['target_ids']??array()))));sort($expected_targets);if($current_targets!==$expected_targets)return new WP_Error('stale','The set of products matching this bulk operation changed after review. Create a fresh proposal.');}
+	if(preg_match('/products-bulk-update$/',$d['ability']??'')){$current_targets=hsm_review_bulk_target_ids($d['input']);$expected_targets=array_values(array_unique(array_map('absint',(array)($d['preview']['candidate_ids']??array()))));sort($expected_targets);if($current_targets!==$expected_targets)return new WP_Error('stale','The set of products matching this bulk operation changed after review. Create a fresh proposal.');}
 	foreach($check_ids as $id){
 		if(!function_exists('wc_get_product'))continue;
 		$p=wc_get_product($id);if(!$p)return new WP_Error('stale','A referenced product no longer exists.');
