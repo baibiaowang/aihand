@@ -174,6 +174,18 @@ function hsm_review_validate($d) {
 		$order=function_exists('wc_get_order')?wc_get_order((int)$raw_preview['order']):false;
 		if(!$order)return new WP_Error('stale','The order no longer exists. Refresh the proposal before executing.');
 		if(isset($raw_preview['current_status'])&&$order->get_status()!==$raw_preview['current_status'])return new WP_Error('stale','The order status changed after this proposal was created. Refresh the proposal before executing.');
+		$snapshot=$raw_preview['order_snapshot']??array();
+		if(isset($snapshot['status'])&&$order->get_status()!==$snapshot['status'])return new WP_Error('stale','The order status changed after this proposal was created. Refresh the proposal.');
+		foreach(array('billing','shipping') as $address_type){
+			$current_address=$order->get_address($address_type);
+			foreach((array)($snapshot[$address_type]??array()) as $field=>$expected){
+				if(wp_json_encode($current_address[$field]??'')!==wp_json_encode($expected))return new WP_Error('stale','The order '.$address_type.' address changed after review. Refresh the proposal to avoid overwriting newer details.');
+			}
+		}
+		foreach((array)($snapshot['meta']??array()) as $meta_key=>$expected){
+			if(wp_json_encode($order->get_meta($meta_key,true))!==wp_json_encode($expected))return new WP_Error('stale','Order metadata changed after review. Refresh the proposal before executing.');
+		}
+		if(array_key_exists('tracking',$snapshot)&&wp_json_encode($order->get_meta('_hsm_tracking',true))!==wp_json_encode($snapshot['tracking']))return new WP_Error('stale','Shipment tracking changed after review. Refresh the proposal before adding another tracking entry.');
 	}
 	if(preg_match('/order-refund$/',$d['ability']??'')&&!empty($raw_preview['order'])){
 		$order=function_exists('wc_get_order')?wc_get_order((int)$raw_preview['order']):false;
