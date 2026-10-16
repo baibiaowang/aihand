@@ -134,8 +134,21 @@ function hsm_review_approve($id) {
 }
 function hsm_review_rollback_partial($ability) {
 	if(!preg_match('/(?:product-upsert|products-bulk-update)$/',$ability)||empty($GLOBALS['hsm_undo'])||!function_exists('hsm_apply_undo'))return array('attempted'=>false,'ok'=>null,'details'=>array());
-	try{$details=hsm_apply_undo($GLOBALS['hsm_undo']);return array('attempted'=>true,'ok'=>true,'details'=>$details);}
-	catch(Throwable $e){return array('attempted'=>true,'ok'=>false,'error'=>$e->getMessage());}
+	try {
+		$entries=(array)$GLOBALS['hsm_undo'];
+		$details=hsm_apply_undo($entries);
+		$details=is_array($details)?$details:array($details);
+		$ok=count($details)>=count($entries);
+		foreach($details as $detail) {
+			if(is_wp_error($detail)) {$ok=false;continue;}
+			if(!is_scalar($detail)) {$ok=false;continue;}
+			$message=(string)$detail;
+			if(preg_match('/no longer exists|failed|error|could not|cannot restore/i',$message))$ok=false;
+		}
+		return array('attempted'=>true,'ok'=>$ok,'details'=>$details,'verification'=>'best_effort_log_check');
+	} catch(Throwable $e) {
+		return array('attempted'=>true,'ok'=>false,'error'=>$e->getMessage());
+	}
 }
 function hsm_review_execute($id) {
 	if(!hsm_review_can_approve())return new WP_Error('forbidden','Only store managers may execute approved AI operations.');
