@@ -470,6 +470,8 @@ hsm_ability( 'conversion', array(
 				return $p ? array( 'id' => $id, 'name' => $p->get_name() ) : null;
 			}, $ids ) );
 		}
+		// The only remaining action is set_settings; never write conversion settings without owner review.
+		hsm_confirm( $in, 'Update conversion and repeat-purchase settings', array( 'settings' => $in['settings'] ?? array(), 'before' => get_option( 'hsm_conversion', array() ) ) );
 		$incoming = (array) ( $in['settings'] ?? array() );
 		if ( ! $incoming ) {
 			throw new Exception( 'settings must be a non-empty object.' );
