@@ -129,6 +129,7 @@ hsm_ability( 'media-upload', array(
 			if ( 'attachment' !== get_post_type( (int) ( $in['id'] ?? 0 ) ) || ! current_user_can( 'edit_post', (int) $in['id'] ) ) {
 				throw new Exception( 'Attachment not found or not editable.' );
 			}
+			hsm_confirm( $in, 'Update image alt text for attachment #' . (int) $in['id'], array( 'id' => (int) $in['id'], 'alt' => sanitize_text_field( $in['alt'] ?? '' ) ) );
 			hsm_undo_add( array( 'type' => 'post_meta', 'id' => (int) $in['id'], 'key' => '_wp_attachment_image_alt', 'old' => get_post_meta( (int) $in['id'], '_wp_attachment_image_alt', true ) ) );
 			update_post_meta( (int) $in['id'], '_wp_attachment_image_alt', sanitize_text_field( $in['alt'] ?? '' ) );
 			return array( 'id' => (int) $in['id'], 'alt' => $in['alt'] ?? '' );
@@ -140,6 +141,9 @@ hsm_ability( 'media-upload', array(
 		$out = array();
 		if ( count( (array) ( $in['files'] ?? array() ) ) > 50 ) {
 			throw new HSM_Blocked( 'At most 50 files per call.' );
+		}
+		if ( ! empty( $in['files'] ) ) {
+			hsm_confirm( $in, 'Import ' . count( (array) $in['files'] ) . ' media file(s)', array( 'files' => $in['files'] ) );
 		}
 		foreach ( (array) ( $in['files'] ?? array() ) as $f ) {
 			$f  = is_array( $f ) ? $f : array( 'src' => $f );
