@@ -437,6 +437,7 @@ hsm_ability( 'support', array(
 				}
 				$new[ $key ] = hsm_support_sanitize( $key, $val );
 			}
+			hsm_confirm( $in, 'Update customer support settings', array( 'before' => $before, 'after' => $new ) );
 			hsm_undo_add( array( 'type' => 'option', 'name' => 'hsm_support', 'old' => $before ) );
 			update_option( 'hsm_support', $new );
 			return array( 'action' => 'set_settings', 'changed' => array_keys( $incoming ), 'settings' => hsm_support_settings() );
@@ -452,6 +453,7 @@ hsm_ability( 'support', array(
 			$before = get_option( 'hsm_support', array() );
 			$new    = $before;
 			$new['templates'] = $clean;
+			hsm_confirm( $in, 'Update customer support reply templates', array( 'before' => $before['templates'] ?? array(), 'after' => $clean ) );
 			hsm_undo_add( array( 'type' => 'option', 'name' => 'hsm_support', 'old' => $before ) );
 			update_option( 'hsm_support', $new );
 			return array( 'action' => 'templates_set', 'count' => count( $clean ) );
@@ -466,18 +468,21 @@ hsm_ability( 'support', array(
 			if ( '' === trim( $answer ) ) {
 				throw new Exception( 'answer is empty.' );
 			}
-			hsm_undo_add( array( 'type' => 'post', 'id' => $p->ID, 'state' => array( 'ID' => $p->ID, 'post_content' => $p->post_content, 'post_status' => $p->post_status ) ) );
 			$publish = ! empty( $in['publish'] );
+			hsm_confirm( $in, ( $publish ? 'Publish answer to' : 'Save draft answer for' ) . ' customer question #' . $p->ID, array( 'question' => $p->post_title, 'answer' => $answer, 'publish' => $publish ) );
+			hsm_undo_add( array( 'type' => 'post', 'id' => $p->ID, 'state' => array( 'ID' => $p->ID, 'post_content' => $p->post_content, 'post_status' => $p->post_status ) ) );
 			wp_update_post( array( 'ID' => $p->ID, 'post_content' => wp_slash( $answer ), 'post_status' => $publish ? 'publish' : 'pending' ) );
 			update_post_meta( $p->ID, '_hsm_answered', 1 );
 			return array( 'action' => 'qna_answer', 'id' => $p->ID, 'status' => $publish ? 'published' : 'draft (not visible yet)' );
 		}
 		if ( 'qna_approve' === $action ) {
+			hsm_confirm( $in, 'Publish customer question #' . $p->ID, array( 'question' => $p->post_title, 'answer' => $p->post_content ) );
 			hsm_undo_add( array( 'type' => 'post', 'id' => $p->ID, 'state' => array( 'ID' => $p->ID, 'post_status' => $p->post_status ) ) );
 			wp_update_post( array( 'ID' => $p->ID, 'post_status' => 'publish' ) );
 			return array( 'action' => 'qna_approve', 'id' => $p->ID );
 		}
 		if ( 'qna_delete' === $action ) {
+			hsm_confirm( $in, 'Permanently delete customer question #' . $p->ID, array( 'question' => $p->post_title ) );
 			wp_delete_post( $p->ID, true );
 			return array( 'action' => 'qna_delete', 'id' => $p->ID );
 		}
@@ -487,11 +492,11 @@ hsm_ability( 'support', array(
 				throw new Exception( 'reply is empty.' );
 			}
 			$to = get_post_meta( $p->ID, '_hsm_from_email', true );
+			if ( ! empty( $in['send'] ) && ! is_email( $to ) ) {
+				throw new Exception( 'This message has no valid reply address.' );
+			}
+			hsm_confirm( $in, ( ! empty( $in['send'] ) ? 'Send reply by email to ' : 'Save reply draft for ' ) . $to, array( 'to' => $to, 'reply' => wp_trim_words( $reply, 30 ), 'send' => ! empty( $in['send'] ) ) );
 			if ( ! empty( $in['send'] ) ) {
-				if ( ! is_email( $to ) ) {
-					throw new Exception( 'This message has no valid reply address.' );
-				}
-				hsm_confirm( $in, 'Send this reply by email to ' . $to, array( 'to' => $to, 'reply' => wp_trim_words( $reply, 30 ) ) );
 				wp_mail( $to, 'Re: ' . $p->post_title, $reply );
 				update_post_meta( $p->ID, '_hsm_status', 'replied' );
 				update_post_meta( $p->ID, '_hsm_reply', $reply );
@@ -501,6 +506,7 @@ hsm_ability( 'support', array(
 			return array( 'action' => 'msg_reply', 'id' => $p->ID, 'status' => 'draft saved (not sent)', 'draft' => $reply );
 		}
 		if ( 'msg_resolve' === $action ) {
+			hsm_confirm( $in, 'Mark support message #' . $p->ID . ' as resolved', array( 'subject' => $p->post_title, 'from' => get_post_meta( $p->ID, '_hsm_from_email', true ) ) );
 			update_post_meta( $p->ID, '_hsm_status', 'resolved' );
 			return array( 'action' => 'msg_resolve', 'id' => $p->ID );
 		}
