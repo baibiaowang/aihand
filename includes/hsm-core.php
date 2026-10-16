@@ -28,7 +28,7 @@ class HSM_Registry {
 				'category'            => $a['_cat'] ?? self::$cat,
 				'input_schema'        => array_filter( array(
 					'type'       => 'object',
-					'properties' => ( $a['properties'] ?? array() ) + ( empty( $a['readonly'] ) ? array( 'confirm_token' => array( 'type' => 'string', 'description' => 'Only when a previous call answered CONFIRMATION_REQUIRED: pass the token it gave, with identical other arguments, after the store owner approved.' ) ) : array() ),
+					'properties' => ( $a['properties'] ?? array() ) + ( empty( $a['readonly'] ) ? array( 'confirm_token' => array( 'type' => 'string', 'description' => 'Legacy field. Tokens are not accepted as approval; the store owner must approve the proposal in the AI Hand review dashboard.' ) ) : array() ),
 					'required'   => $a['required'] ?? array(),
 				) ) + array( 'type' => 'object' ),
 				'execute_callback'    => function ( $input = array() ) use ( $a, $name ) {
@@ -98,13 +98,10 @@ function hsm_run_ability( $name, $a, $input ) {
 		return $result;
 	} catch ( HSM_Confirm_Required $e ) {
 		return new WP_Error( 'hsm_confirmation_required', sprintf(
-			"CONFIRMATION_REQUIRED — nothing was changed.\nReason: %s\nPreview: %s\nShow this to the store owner. Only if they approve, call %s again with exactly the same arguments plus \"confirm_token\": \"%s\" (single use, valid %d minutes).",
+			"CONFIRMATION_REQUIRED — nothing was changed.\nReason: %s\nPreview: %s\nA review task was submitted to the store owner's AI Hand review dashboard. The owner must approve it there before execution.",
 			$e->getMessage(),
-			wp_json_encode( $e->preview, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
-			str_replace( '/', '-', $name ),
-			$e->token,
-			(int) ( hsm_guard( 'token_ttl' ) / 60 )
-		), array( 'status' => 409, 'confirm_token' => $e->token, 'preview' => $e->preview ) );
+			wp_json_encode( $e->preview, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES )
+		), array( 'status' => 409, 'preview' => $e->preview ) );
 	} catch ( HSM_Blocked $e ) {
 		$write && hsm_audit_write( $name, $input, null, 'blocked', $e->getMessage() );
 		return new WP_Error( 'hsm_blocked', 'BLOCKED by store safety rules — nothing was changed. ' . $e->getMessage(), array( 'status' => 403 ) );
@@ -222,30 +219,22 @@ function hsm_confirm( $in, $reason, $preview = array() ) {
 		return;
 	}
 	$ability = $GLOBALS['hsm_current_ability'] ?? 'unknown';
-	$hash    = hsm_input_hash( $ability, $in );
 	$approved = $GLOBALS['hsm_review_execution'] ?? null;
 	$review_hash = function_exists( 'hsm_review_canonical' ) ? hsm_review_canonical( $ability, $in ) : '';
+	// Only the server-side execution initiated from an approved review task can pass this gate.
+	// A token returned to an AI client is not proof of human approval and must never authorize a write.
 	if ( is_array( $approved ) && (int) ( $approved['id'] ?? 0 ) > 0
 		&& ($approved['ability'] ?? '') === $ability && ($approved['input_hash'] ?? '') === $review_hash ) {
 		$GLOBALS['hsm_confirmed'] = $reason;
 		return;
 	}
-	if ( ! empty( $in['confirm_token'] ) ) {
-		$tok    = preg_replace( '/[^A-Za-z0-9]/', '', (string) $in['confirm_token'] );
-		$stored = get_transient( 'hsm_tok_' . $tok );
-		if ( $stored && hash_equals( $stored['hash'], $hash ) && (int) $stored['user'] === get_current_user_id() ) {
-			delete_transient( 'hsm_tok_' . $tok ); // Single use.
-			$GLOBALS['hsm_confirmed'] = $reason;
-			return;
-		}
-		$reason = 'The confirm_token is invalid, expired, already used, or the arguments changed since it was issued. ' . $reason;
-	}
-	$tok = wp_generate_password( 12, false );
-	set_transient( 'hsm_tok_' . $tok, array( 'hash' => $hash, 'user' => get_current_user_id(), 'ability' => $ability ), (int) hsm_guard( 'token_ttl' ) );
+	// Strip legacy tokens before persisting the proposal. They are not accepted as approval.
+	$proposal_input = $in;
+	unset( $proposal_input['confirm_token'] );
 	if ( function_exists( 'hsm_review_create' ) ) {
-		hsm_review_create( $ability, $in, $reason, $preview, $tok );
+		hsm_review_create( $ability, $proposal_input, $reason, $preview );
 	}
-	throw new HSM_Confirm_Required( $reason, $preview, $tok );
+	throw new HSM_Confirm_Required( $reason, $preview, '' );
 }
 
 function hsm_rate_limit() {
