@@ -128,7 +128,7 @@ function hsm_review_validate($d) {
 }
 function hsm_review_approve($id) {
 	if(!hsm_review_can_approve())return new WP_Error('forbidden','Only store managers may approve AI operations.');
-	$d=hsm_review_read($id);$v=hsm_review_validate($d);if(is_wp_error($v)){if($v->get_error_code()==='expired')hsm_review_update($id,array('status'=>'expired'));return $v;}
+	$d=hsm_review_read($id);$v=hsm_review_validate($d);if(is_wp_error($v)){if($v->get_error_code()==='expired')hsm_review_update($id,array('status'=>'expired'));elseif($v->get_error_code()==='stale')hsm_review_update($id,array('status'=>'stale','stale_at'=>current_time('mysql',true),'stale_reason'=>$v->get_error_message()));return $v;}
 	if($d['status']!=='pending')return new WP_Error('invalid_state','Only pending reviews can be approved.');
 	hsm_review_update($id,array('status'=>'approved','approved_by'=>get_current_user_id(),'approved_at'=>current_time('mysql',true)));hsm_review_audit($id,'approved');return true;
 }
@@ -141,7 +141,7 @@ function hsm_review_execute($id) {
 	if(!hsm_review_can_approve())return new WP_Error('forbidden','Only store managers may execute approved AI operations.');
 	$lock='hsm_review_lock_'.(int)$id;if(!add_option($lock,(string)get_current_user_id(),'',false))return new WP_Error('busy','This operation is already being executed.');
 	try {
-		$d=hsm_review_read($id);$v=hsm_review_validate($d);if(is_wp_error($v))return $v;
+		$d=hsm_review_read($id);$v=hsm_review_validate($d);if(is_wp_error($v)){if($v->get_error_code()==='expired')hsm_review_update($id,array('status'=>'expired'));elseif($v->get_error_code()==='stale')hsm_review_update($id,array('status'=>'stale','stale_at'=>current_time('mysql',true),'stale_reason'=>$v->get_error_message()));return $v;}
 		if($d['status']!=='approved')return new WP_Error('invalid_state','Approve this review before execution.');
 		$ref=HSM_Registry::$abilities[$d['ability']];
 		$GLOBALS['hsm_review_execution']=array('id'=>(int)$id,'ability'=>$d['ability'],'input_hash'=>$d['input_hash']);
@@ -160,17 +160,17 @@ function hsm_review_reject($id,$reason='') {
 }
 function hsm_review_menu(){if(!hsm_review_can_approve())return;add_submenu_page('woocommerce','AI 操作审核','AI 操作审核','manage_woocommerce','hsm-review','hsm_review_page');}
 add_action('admin_menu','hsm_review_menu',30);
-function hsm_review_status_label($s){return array('pending'=>'待审核','approved'=>'已批准','executing'=>'执行中','executed'=>'已完成','rejected'=>'已拒绝','expired'=>'已过期','execution_error'=>'执行失败')[$s]??$s;}
+function hsm_review_status_label($s){return array('pending'=>'待审核','approved'=>'已批准','executing'=>'执行中','executed'=>'已完成','rejected'=>'已拒绝','expired'=>'已过期','execution_error'=>'执行失败','stale'=>'数据已变化')[$s]??$s;}
 function hsm_review_risk($d){$n=is_array($d['preview']['changes']??null)?count($d['preview']['changes']):0;if($n>20)return array('high','高风险 · '.$n.' 项');if(($d['preview']['raw_preview']['risk']??'')==='high')return array('high','高风险');return array('medium',$n?'需审核 · '.$n.' 项':'需人工确认');}
 function hsm_review_value($v){return is_array($v)||is_object($v)?wp_json_encode($v,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES):($v===null?'—':(string)$v);}
 function hsm_review_page() {
 	if(!hsm_review_can_approve())wp_die('Forbidden');
-	$filter=sanitize_key($_GET['review_status']??'pending');$allowed=array('pending','approved','executing','executed','rejected','expired','execution_error','all');if(!in_array($filter,$allowed,true))$filter='pending';
+	$filter=sanitize_key($_GET['review_status']??'pending');$allowed=array('pending','approved','executing','executed','rejected','expired','execution_error','stale','all');if(!in_array($filter,$allowed,true))$filter='pending';
 	$posts=get_posts(array('post_type'=>'hsm_review','post_status'=>'private','posts_per_page'=>100,'orderby'=>'date','order'=>'DESC'));$counts=array_fill_keys(array_slice($allowed,0,-1),0);
 	foreach($posts as $p){$x=hsm_review_read($p->ID);if($x&&isset($counts[$x['status']]))$counts[$x['status']]++;}
 	$nonce=wp_create_nonce('hsm_review_action');
 	echo '<div class="wrap hsm-review-wrap"><h1>AI 操作审核台</h1><p class="description">AI 只能提出操作计划。预览不会修改线上数据；批准与执行前都会重新验证。</p><nav class="nav-tab-wrapper">';
-	foreach(array('pending'=>'待审核','approved'=>'已批准','executing'=>'执行中','executed'=>'已完成','rejected'=>'已拒绝','expired'=>'已过期','execution_error'=>'失败') as $k=>$label)echo '<a class="nav-tab '.($filter===$k?'nav-tab-active':'').'" href="'.esc_url(add_query_arg(array('page'=>'hsm-review','review_status'=>$k),admin_url('admin.php'))).'">'.esc_html($label).' <span class="count">('.(int)$counts[$k].')</span></a>';
+	foreach(array('pending'=>'待审核','approved'=>'已批准','executing'=>'执行中','executed'=>'已完成','rejected'=>'已拒绝','expired'=>'已过期','execution_error'=>'失败','stale'=>'数据已变化') as $k=>$label)echo '<a class="nav-tab '.($filter===$k?'nav-tab-active':'').'" href="'.esc_url(add_query_arg(array('page'=>'hsm-review','review_status'=>$k),admin_url('admin.php'))).'">'.esc_html($label).' <span class="count">('.(int)$counts[$k].')</span></a>';
 	echo '</nav><style>
 	.hsm-card{background:#fff;border:1px solid #dcdcde;border-radius:12px;margin:16px 0;padding:20px;max-width:1200px}.hsm-card header{display:flex;justify-content:space-between;gap:20px}.hsm-card h2{margin:0 0 5px}.hsm-id{color:#777;font-size:12px}.hsm-badges{display:flex;gap:6px;align-items:flex-start}.hsm-status,.hsm-risk{padding:5px 9px;border-radius:99px;font-size:12px;font-weight:600;background:#f0f0f1}.hsm-risk.high{background:#ffe8e8;color:#b32d2e}.hsm-risk.medium{background:#fff5cc;color:#705000}.hsm-meta{display:flex;flex-wrap:wrap;gap:15px;color:#646970;font-size:12px;border-top:1px solid #eee;border-bottom:1px solid #eee;padding:10px 0;margin:12px 0}.hsm-product-list{overflow:auto}.hsm-product-list table{width:100%;border-collapse:collapse}.hsm-product-list th,.hsm-product-list td{text-align:left;border-bottom:1px solid #eee;padding:9px}.hsm-compare{display:grid;grid-template-columns:1fr 36px 1fr;gap:10px;align-items:center;margin-top:14px}.hsm-pane{border:1px solid #ddd;border-radius:9px;padding:12px}.hsm-pane.before{background:#fff7f7;border-color:#f0caca}.hsm-pane.after{background:#f3fff5;border-color:#b7dfbf}.hsm-pane h3{margin-top:0}.hsm-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #eee}.hsm-row:last-child{border:0}.hsm-row del{color:#a00}.hsm-row ins{color:#087a28;text-decoration:none;font-weight:600}.hsm-arrow{text-align:center;font-size:24px;color:#777}.hsm-details{margin-top:12px}.hsm-details pre{background:#f6f7f7;padding:12px;max-height:260px;overflow:auto}.hsm-live{margin-top:14px}.hsm-live iframe{width:100%;height:520px;border:1px solid #ddd;border-radius:8px;background:#fff}.hsm-actions{display:flex;gap:10px;align-items:center;margin-top:16px}.hsm-actions form{display:flex;gap:7px;align-items:center}.hsm-card small{color:#646970}@media(max-width:800px){.hsm-card header{display:block}.hsm-badges{margin-top:10px}.hsm-compare{grid-template-columns:1fr}.hsm-arrow{transform:rotate(90deg)}} </style>';
 	foreach($posts as $p){
