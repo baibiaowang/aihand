@@ -57,7 +57,16 @@ function hsm_review_validate($d) {
 	if(!empty($d['expires_at'])&&strtotime($d['expires_at'].' UTC')<time())return new WP_Error('expired','Review task expired. Create a new proposal.');
 	if(hsm_review_canonical($d['ability'],$d['input'])!==($d['input_hash']??''))return new WP_Error('tampered','Operation plan changed after it was created.');
 	if(empty(HSM_Registry::$abilities[$d['ability']]))return new WP_Error('ability_missing','The original AI ability is no longer available.');
-	foreach(hsm_review_extract_ids($d['input']) as $id)if(function_exists('wc_get_product')&&!wc_get_product($id))return new WP_Error('stale','A referenced product no longer exists.');
+	$stored_products=$d['preview']['products']??array();
+	foreach(hsm_review_extract_ids($d['input']) as $id){
+		if(!function_exists('wc_get_product'))continue;
+		$p=wc_get_product($id);if(!$p)return new WP_Error('stale','A referenced product no longer exists.');
+		$old=null;foreach($stored_products as $sp)if((int)($sp['id']??0)===$id){$old=$sp;break;}
+		if($old){
+			$live=array('name'=>$p->get_name(),'status'=>$p->get_status(),'regular_price'=>$p->get_regular_price(),'sale_price'=>$p->get_sale_price(),'stock_status'=>$p->get_stock_status(),'stock_quantity'=>$p->get_stock_quantity());
+			foreach($live as $key=>$value)if((string)$value!==(string)($old[$key]??''))return new WP_Error('stale',"Product #$id changed since this proposal was created ($key). Refresh the proposal before executing.");
+		}
+	}
 	return true;
 }
 function hsm_review_approve($id) {
