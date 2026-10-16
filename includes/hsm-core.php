@@ -223,6 +223,12 @@ function hsm_confirm( $in, $reason, $preview = array() ) {
 	}
 	$ability = $GLOBALS['hsm_current_ability'] ?? 'unknown';
 	$hash    = hsm_input_hash( $ability, $in );
+	$approved = $GLOBALS['hsm_review_execution'] ?? null;
+	if ( is_array( $approved ) && (int) ( $approved['id'] ?? 0 ) > 0
+		&& ($approved['ability'] ?? '') === $ability && ($approved['input_hash'] ?? '') === $hash ) {
+		$GLOBALS['hsm_confirmed'] = $reason;
+		return;
+	}
 	if ( ! empty( $in['confirm_token'] ) ) {
 		$tok    = preg_replace( '/[^A-Za-z0-9]/', '', (string) $in['confirm_token'] );
 		$stored = get_transient( 'hsm_tok_' . $tok );
@@ -235,6 +241,9 @@ function hsm_confirm( $in, $reason, $preview = array() ) {
 	}
 	$tok = wp_generate_password( 12, false );
 	set_transient( 'hsm_tok_' . $tok, array( 'hash' => $hash, 'user' => get_current_user_id(), 'ability' => $ability ), (int) hsm_guard( 'token_ttl' ) );
+	if ( function_exists( 'hsm_review_create' ) ) {
+		hsm_review_create( $ability, $in, $reason, $preview, $tok );
+	}
 	throw new HSM_Confirm_Required( $reason, $preview, $tok );
 }
 
