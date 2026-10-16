@@ -913,7 +913,7 @@ hsm_ability( 'taxonomy-manage', array(
 			if ( ! $t || is_wp_error( $t ) ) {
 				throw new Exception( 'Term not found.' );
 			}
-			hsm_confirm( $in, "Delete $tax term \"{$t->name}\" (used by {$t->count} items)", array( 'id' => $t->term_id, 'name' => $t->name, 'count' => $t->count ) );
+			hsm_confirm( $in, "Delete $tax term \"{$t->name}\" (used by {$t->count} items)", array( 'taxonomy' => $tax, 'id' => $t->term_id, 'name' => $t->name, 'slug' => $t->slug, 'description' => $t->description, 'parent' => (int) $t->parent, 'count' => (int) $t->count ) );
 			$r  = wp_delete_term( (int) $id, $tax );
 			return array( 'deleted' => (bool) $r && ! is_wp_error( $r ) );
 		}
@@ -930,7 +930,7 @@ hsm_ability( 'taxonomy-manage', array(
 		}
 		$id = $in['id'] ?? ( get_term_by( 'name', $in['name'] ?? '', $tax )->term_id ?? 0 );
 		$existing_term = $id ? get_term( (int) $id, $tax ) : null;
-		hsm_confirm( $in, ( $existing_term && ! is_wp_error( $existing_term ) ? 'Update ' . $tax . ' term "' . $existing_term->name . '"' : 'Create ' . $tax . ' term "' . ( $in['name'] ?? '' ) . '"' ), array( 'taxonomy' => $tax, 'before' => $existing_term && ! is_wp_error( $existing_term ) ? array( 'name' => $existing_term->name, 'slug' => $existing_term->slug, 'description' => $existing_term->description, 'parent' => $existing_term->parent ) : null, 'after' => $in ) );
+		hsm_confirm( $in, ( $existing_term && ! is_wp_error( $existing_term ) ? 'Update ' . $tax . ' term "' . $existing_term->name . '"' : 'Create ' . $tax . ' term "' . ( $in['name'] ?? '' ) . '"' ), array( 'taxonomy' => $tax, 'term_id' => $existing_term && ! is_wp_error( $existing_term ) ? (int) $existing_term->term_id : 0, 'before' => $existing_term && ! is_wp_error( $existing_term ) ? array( 'name' => $existing_term->name, 'slug' => $existing_term->slug, 'description' => $existing_term->description, 'parent' => (int) $existing_term->parent ) : null, 'after' => $in ) );
 		if ( $id ) {
 			isset( $in['name'] ) && $args['name'] = $in['name'];
 			$r = wp_update_term( (int) $id, $tax, $args );
