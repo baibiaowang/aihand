@@ -171,6 +171,7 @@ hsm_ability( 'shipping-rules', array(
 			}
 			$new['rules'] = $clean;
 		}
+		hsm_confirm( $in, 'Update conditional shipping rules', array( 'before' => $before, 'after' => $new ) );
 		hsm_undo_add( array( 'type' => 'option', 'name' => 'hsm_shipping_rules', 'old' => $before ) );
 		update_option( 'hsm_shipping_rules', $new );
 		return array( 'action' => 'set_settings', 'settings' => hsm_ship_rules_settings() );
