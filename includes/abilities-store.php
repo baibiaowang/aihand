@@ -813,7 +813,7 @@ hsm_ability( 'products-bulk-update', array(
 			array_unshift( $reasons, count( $plan ) . ' products/variations will change' );
 		}
 		if ( $reasons ) {
-			hsm_confirm( $in, implode( '; ', array_slice( $reasons, 0, 10 ) ) . ( count( $reasons ) > 10 ? '; …' : '' ), array( 'count' => count( $plan ), 'target_ids' => array_values( array_unique( array_map( function ( $row ) { return (int) $row[0]->get_id(); }, $plan ) ) ), 'first_changes' => array_slice( $preview, 0, 15 ) ) );
+			hsm_confirm( $in, implode( '; ', array_slice( $reasons, 0, 10 ) ) . ( count( $reasons ) > 10 ? '; …' : '' ), array( 'count' => count( $plan ), 'target_ids' => array_values( array_unique( array_map( function ( $row ) { return (int) $row[0]->get_id(); }, $plan ) ) ), 'candidate_ids' => hsm_review_bulk_target_ids( $in ), 'first_changes' => array_slice( $preview, 0, 15 ) ) );
 		}
 		// ---- Apply.
 		$parents = array();
