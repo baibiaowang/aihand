@@ -453,6 +453,7 @@ hsm_ability( 'customers-manage', array(
 			if ( empty( $in['email'] ) || ! is_email( $in['email'] ) ) {
 				throw new Exception( 'A valid email is required.' );
 			}
+			hsm_confirm( $in, 'Create customer account for ' . sanitize_email( $in['email'] ), array( 'action' => 'create', 'email' => sanitize_email( $in['email'] ), 'first_name' => $in['first_name'] ?? '', 'last_name' => $in['last_name'] ?? '', 'billing' => $in['billing'] ?? array(), 'shipping' => $in['shipping'] ?? array() ) );
 			$uid = wc_create_new_customer( $in['email'], '', wp_generate_password(), array( 'first_name' => $in['first_name'] ?? '', 'last_name' => $in['last_name'] ?? '' ) );
 			if ( is_wp_error( $uid ) ) {
 				throw new Exception( $uid->get_error_message() );
@@ -461,6 +462,7 @@ hsm_ability( 'customers-manage', array(
 		if ( ! user_can( $uid, 'customer' ) && ! in_array( 'customer', (array) get_userdata( $uid )->roles, true ) && ! in_array( 'subscriber', (array) get_userdata( $uid )->roles, true ) ) {
 			throw new HSM_Blocked( 'That account is staff, not a customer; it cannot be edited here.' );
 		}
+		hsm_confirm( $in, 'Update customer #' . $uid, array( 'action' => 'update', 'customer_id' => $uid, 'changes' => $in ) );
 		$c = new WC_Customer( $uid );
 		isset( $in['first_name'] ) && $c->set_first_name( $in['first_name'] );
 		isset( $in['last_name'] ) && $c->set_last_name( $in['last_name'] );
