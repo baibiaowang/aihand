@@ -238,6 +238,7 @@ hsm_ability( 'seo-settings', array(
 				}
 				$cur[ $k ] = $v;
 			}
+			hsm_confirm( $in, 'Update SEO settings', array( 'before' => get_option( 'hsm_seo', array() ), 'after' => $cur ) );
 			hsm_undo_add( array( 'type' => 'option', 'name' => 'hsm_seo', 'old' => get_option( 'hsm_seo', null ) ) );
 			update_option( 'hsm_seo', $cur );
 		}
