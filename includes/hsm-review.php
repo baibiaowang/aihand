@@ -97,7 +97,7 @@ function hsm_review_validate($d) {
 		if($old){
 			$children=method_exists($p,'get_children')?$p->get_children():array();sort($children);
 			$live=array('name'=>$p->get_name(),'sku'=>$p->get_sku(),'type'=>$p->get_type(),'status'=>$p->get_status(),'manage_stock'=>$p->get_manage_stock(),'child_ids'=>array_values(array_map('intval',$children)),'regular_price'=>$p->get_regular_price(),'sale_price'=>$p->get_sale_price(),'stock_status'=>$p->get_stock_status(),'stock_quantity'=>$p->get_stock_quantity());
-			foreach($live as $key=>$value)if(wp_json_encode($value)!==wp_json_encode($old[$key]??($key==='child_ids'?array():'')))return new WP_Error('stale',"Product #$id changed since this proposal was created ($key). Refresh the proposal before executing.");
+			foreach($live as $key=>$value)if(array_key_exists($key,$old)&&wp_json_encode($value)!==wp_json_encode($old[$key]))return new WP_Error('stale',"Product #$id changed since this proposal was created ($key). Refresh the proposal before executing.");
 		}
 	}
 	return true;
