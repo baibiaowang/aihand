@@ -1,7 +1,7 @@
 <?php
 if (!defined('ABSPATH')) exit;
 class AIWC_Task_Validator {
-    const TYPES=array('product_price_update','product_stock_update','product_text_update','product_category_update','product_seo_update');
+    const TYPES=array('product_price_update','product_stock_update','product_text_update');
     public static function validate_plan($plan){
         if(!is_array($plan))return new WP_Error('invalid_plan','Plan must be a JSON object.');
         foreach(array('schema_version','task_type','title','changes') as $key)if(!array_key_exists($key,$plan))return new WP_Error('invalid_plan',"Missing field: {$key}");
@@ -13,7 +13,8 @@ class AIWC_Task_Validator {
             if(!is_array($change))return new WP_Error('invalid_change','Change #'.($i+1).' is invalid.');
             foreach(array('object_type','object_id','field','before','after') as $key)if(!array_key_exists($key,$change))return new WP_Error('invalid_change','Change #'.($i+1).' missing '.$key.'.');
             if($change['object_type']!=='product'||(int)$change['object_id']<1)return new WP_Error('invalid_object','Only valid WooCommerce product IDs are supported.');
-            if(!is_string($change['field'])||strlen($change['field'])>100)return new WP_Error('invalid_field','Invalid field.');
+            $allowed=array('regular_price','sale_price','stock_quantity','name','description','short_description');
+            if(!in_array($change['field'],$allowed,true))return new WP_Error('invalid_field','Unsupported product field: '.$change['field']);
         }
         return true;
     }
@@ -23,12 +24,12 @@ class AIWC_Task_Validator {
     public static function hash($plan){return hash('sha256',self::canonical_json($plan));}
     public static function current_product_value($product,$field){
         switch($field){
-            case 'regular_price':return $product->get_regular_price('edit');
-            case 'sale_price':return $product->get_sale_price('edit');
-            case 'stock_quantity':return $product->get_stock_quantity('edit');
-            case 'name':return $product->get_name('edit');
-            case 'description':return $product->get_description('edit');
-            case 'short_description':return $product->get_short_description('edit');
+            case'regular_price':return $product->get_regular_price('edit');
+            case'sale_price':return $product->get_sale_price('edit');
+            case'stock_quantity':return $product->get_stock_quantity('edit');
+            case'name':return $product->get_name('edit');
+            case'description':return $product->get_description('edit');
+            case'short_description':return $product->get_short_description('edit');
         }
         return new WP_Error('unsupported_field','Unsupported product field: '.$field);
     }
