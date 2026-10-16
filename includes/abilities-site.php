@@ -195,7 +195,21 @@ hsm_ability( 'site-extensions', array(
 			if ( 'permalinks' === $in['action'] && ( empty( $in['structure'] ) || false === strpos( $in['structure'], '%' ) || preg_match( '/[^a-z0-9%\/_-]/i', $in['structure'] ) ) ) {
 				throw new HSM_Blocked( 'Invalid permalink structure.' );
 			}
-			hsm_confirm( $in, ucfirst( str_replace( '_', ' ', $in['action'] ) ) . ' ' . ( $in['slug'] ?? $in['structure'] ?? '' ) . ' — this changes site code/behavior', array( 'action' => $in['action'], 'slug' => $in['slug'] ?? null, 'activate' => $in['activate'] ?? null ) );
+			$plugin_file = ! empty( $in['slug'] ) ? $find( $in['slug'] ) : null;
+			$installed_plugins = get_plugins();
+			$plugin_data = $plugin_file && isset( $installed_plugins[ $plugin_file ] ) ? $installed_plugins[ $plugin_file ] : array();
+			$target_theme = ! empty( $in['slug'] ) ? wp_get_theme( $in['slug'] ) : false;
+			$theme_exists = $target_theme && $target_theme->exists();
+			$extension_snapshot = array(
+				'plugin_file' => $plugin_file ?: null,
+				'plugin_version' => $plugin_data['Version'] ?? null,
+				'plugin_active' => $plugin_file ? is_plugin_active( $plugin_file ) : false,
+				'theme_exists' => (bool) $theme_exists,
+				'theme_version' => $theme_exists ? $target_theme->get( 'Version' ) : null,
+				'active_theme' => get_stylesheet(),
+				'permalink_structure' => get_option( 'permalink_structure' ),
+			);
+			hsm_confirm( $in, ucfirst( str_replace( '_', ' ', $in['action'] ) ) . ' ' . ( $in['slug'] ?? $in['structure'] ?? '' ) . ' — this changes site code/behavior', array( 'action' => $in['action'], 'slug' => $in['slug'] ?? null, 'activate' => $in['activate'] ?? null, 'extension_snapshot' => $extension_snapshot ) );
 			'permalinks' === $in['action'] && hsm_undo_add( array( 'type' => 'option', 'name' => 'permalink_structure', 'old' => get_option( 'permalink_structure' ) ) );
 			'activate_theme' === $in['action'] && hsm_undo_add( array( 'type' => 'theme', 'old' => get_stylesheet() ) );
 		}
