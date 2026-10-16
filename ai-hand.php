@@ -2,7 +2,7 @@
 /**
  * Plugin Name: AI Hand (Store Operations)
  * Description: MCP tools that let an AI agent run a WooCommerce store with guard rails, two-step human review, undo and audit.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Requires at least: 6.9
  * Requires PHP: 8.0
  * Author: Hark
@@ -11,7 +11,7 @@
 defined( 'ABSPATH' ) || exit;
 require_once __DIR__ . '/includes/hsm-core.php';
 require_once __DIR__ . '/includes/hsm-review.php';
-HSM_Registry::$ns='ai-hand/'; HSM_Registry::$cat='ai-hand'; HSM_Registry::$version='1.2.0';
+HSM_Registry::$ns='ai-hand/'; HSM_Registry::$cat='ai-hand'; HSM_Registry::$version='1.3.0';
 $hsm_ns=HSM_Registry::$ns;$hsm_pfx=str_replace('/','-',$hsm_ns);
 foreach(array('hsm-woo.php','abilities-core.php','seo-frontend.php','redirects.php','feed.php','media.php','abilities-store.php','abilities-orders.php','shipments.php','order-export.php','invoice.php','order-numbers.php','content.php','support.php','conversion.php','post-purchase.php','marketing.php','followups.php','shipping-rules.php','abilities-seo.php','abilities-site.php','abilities-reviews.php') as $f)require_once __DIR__.'/includes/'.$f;
 add_action('wp_abilities_api_categories_init',function(){wp_register_ability_category('ai-hand',array('label'=>'AI Hand','description'=>'WooCommerce store operations for AI agents.'));});
