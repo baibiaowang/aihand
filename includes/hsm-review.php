@@ -9,7 +9,7 @@ function hsm_review_register() {
 }
 add_action('init','hsm_review_register',5);
 
-function hsm_review_canonical($ability,$input){ return hash('sha256',get_current_user_id().'|'.$ability.'|'.wp_json_encode(hsm_canonical($input))); }
+function hsm_review_canonical($ability,$input){ unset($input['confirm_token']); return hash('sha256',$ability.'|'.wp_json_encode(hsm_canonical($input))); }
 
 function hsm_review_create($ability,$input,$reason,$preview,$token){
 	$post_id=wp_insert_post(array(
