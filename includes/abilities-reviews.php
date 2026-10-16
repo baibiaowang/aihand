@@ -102,12 +102,14 @@ hsm_ability( 'reviews', array(
 		}
 
 		if ( 'reply' === $action ) {
-			$c    = hsm_review_get( $in['review_id'] ?? 0 );
+			$c = hsm_review_get( $in['review_id'] ?? 0 );
+			$reply_content = hsm_review_text( $in['content'] ?? '', 3000 );
+			hsm_confirm( $in, 'Reply publicly to product review #' . (int) $c->comment_ID, array( 'review_id' => (int) $c->comment_ID, 'product_id' => (int) $c->comment_post_ID, 'reply' => $reply_content ) );
 			$user = wp_get_current_user();
 			$cid  = wp_insert_comment( array(
 				'comment_post_ID'  => $c->comment_post_ID,
 				'comment_parent'   => $c->comment_ID,
-				'comment_content'  => hsm_review_text( $in['content'] ?? '', 3000 ),
+				'comment_content'  => $reply_content,
 				'comment_type'     => 'review',
 				'comment_approved' => 1,
 				'user_id'          => $user->ID,
@@ -128,6 +130,7 @@ hsm_ability( 'reviews', array(
 				throw new Exception( 'status must be approve, hold, spam or trash.' );
 			}
 			$old = wp_get_comment_status( $c );
+			hsm_confirm( $in, 'Change review #' . (int) $c->comment_ID . ' status from ' . $old . ' to ' . $new, array( 'review_id' => (int) $c->comment_ID, 'from' => $old, 'to' => $new ) );
 			hsm_undo_add( array( 'type' => 'comment', 'id' => (int) $c->comment_ID, 'old_status' => $old ) );
 			wp_set_comment_status( $c->comment_ID, $new );
 			WC_Comments::clear_transients( $c->comment_post_ID );
@@ -160,6 +163,7 @@ hsm_ability( 'reviews', array(
 					$data['comment_date_gmt'] = $when->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' );
 				}
 			}
+			hsm_confirm( $in, 'Import a product review from ' . $source, array( 'product_id' => $pid, 'source' => $source, 'rating' => $rating, 'content' => $data['comment_content'], 'author' => $data['comment_author'] ) );
 			$cid = wp_insert_comment( $data );
 			if ( ! $cid ) {
 				throw new Exception( 'Could not save the imported review.' );
@@ -181,6 +185,7 @@ hsm_ability( 'reviews', array(
 			if ( ! $s ) {
 				throw new Exception( 'settings must be a non-empty object.' );
 			}
+			hsm_confirm( $in, 'Change product review settings', array( 'settings' => $s ) );
 			hsm_undo_add( array( 'type' => 'option', 'name' => 'woocommerce_enable_reviews', 'old' => get_option( 'woocommerce_enable_reviews' ) ) );
 			if ( array_key_exists( 'reviews_enabled', $s ) ) {
 				update_option( 'woocommerce_enable_reviews', $s['reviews_enabled'] ? 'yes' : 'no' );
@@ -205,6 +210,7 @@ hsm_ability( 'reviews', array(
 			if ( $n >= 200 ) {
 				throw new HSM_Blocked( 'At most 200 sample reviews. Purge some first.' );
 			}
+			hsm_confirm( $in, 'Add a clearly labelled sample review', array( 'product_id' => $pid, 'rating' => $rating, 'content' => hsm_review_text( $in['content'] ?? '', 2000 ), 'author' => $in['author'] ?? 'Sample Customer' ) );
 			$cid = wp_insert_comment( array(
 				'comment_post_ID'  => $pid,
 				'comment_content'  => hsm_review_text( $in['content'] ?? '', 2000 ),
@@ -224,9 +230,7 @@ hsm_ability( 'reviews', array(
 
 		if ( 'purge_samples' === $action ) {
 			$ids = get_comments( array( 'type' => 'review', 'meta_key' => '_hsm_sample_review', 'meta_value' => '1', 'fields' => 'ids', 'status' => 'all', 'number' => 0 ) );
-			if ( count( $ids ) > 20 ) {
-				hsm_confirm( $in, sprintf( 'Permanently delete %d sample reviews.', count( $ids ) ), array( 'count' => count( $ids ) ) );
-			}
+			hsm_confirm( $in, sprintf( 'Permanently delete %d sample reviews.', count( $ids ) ), array( 'count' => count( $ids ), 'review_ids' => array_map( 'intval', $ids ) ) );
 			$posts = array();
 			foreach ( $ids as $id ) {
 				$c = get_comment( $id );
