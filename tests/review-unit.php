@@ -10,7 +10,8 @@ function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags)
 function hsm_canonical($value) { return $value; }
 function wc_get_product_id_by_sku($sku) { return array('SKU-EXISTING' => 42, 'VAR-EXISTING' => 84)[$sku] ?? 0; }
 function hsm_product_id($input) { return !empty($input['id']) ? (int)$input['id'] : wc_get_product_id_by_sku((string)($input['sku'] ?? '')); }
-function is_wp_error($value) { return false; }
+class ReviewTestWpError { public function get_error_message() { return 'restore failed'; } }
+function is_wp_error($value) { return $value instanceof ReviewTestWpError; }
 function hsm_apply_undo($entries) { return $GLOBALS['review_mock_undo_result'] ?? array(); }
 class ReviewTestProduct {
     private $id;
@@ -75,6 +76,9 @@ check(!empty($rollback_ok['attempted']) && $rollback_ok['ok'] === true, 'rollbac
 $GLOBALS['review_mock_undo_result'] = array('product 1 no longer exists');
 $rollback_failed = hsm_review_rollback_partial('ai-hand/product-upsert');
 check($rollback_failed['ok'] === false, 'rollback must not report success when an undo entry could not be restored');
+$GLOBALS['review_mock_undo_result'] = array(new ReviewTestWpError());
+$rollback_wp_error = hsm_review_rollback_partial('ai-hand/product-upsert');
+check($rollback_wp_error['ok'] === false && $rollback_wp_error['details'][0] === 'restore failed', 'WP_Error rollback details must be marked failed and normalized for safe admin rendering');
 $GLOBALS['review_mock_undo_result'] = array('restored product 1');
 $rollback_unsupported = hsm_review_rollback_partial('ai-hand/orders-refund');
 check(empty($rollback_unsupported['attempted']), 'rollback helper must not run for unsupported or irreversible abilities');
