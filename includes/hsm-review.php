@@ -202,6 +202,29 @@ function hsm_review_validate($d) {
 		}
 		if(count((array)($raw_preview['refund_items_snapshot']??array()))!==count($order->get_items()))return new WP_Error('stale','The order line items changed after refund review. Recalculate the refund.');
 	}
+	if(preg_match('/taxonomy-manage$/',$d['ability']??'')){
+		$tax=sanitize_key((string)($raw_preview['taxonomy']??$d['input']['taxonomy']??'product_cat'));
+		$action=$d['input']['action']??'';
+		if('delete'===$action){
+			$term=get_term((int)($raw_preview['id']??0),$tax);
+			if(!$term||is_wp_error($term))return new WP_Error('stale','The taxonomy term no longer exists. Refresh the proposal.');
+			$live=array('name'=>$term->name,'slug'=>$term->slug,'description'=>$term->description,'parent'=>(int)$term->parent,'count'=>(int)$term->count);
+			$expected=array('name'=>$raw_preview['name']??'','slug'=>$raw_preview['slug']??'','description'=>$raw_preview['description']??'','parent'=>(int)($raw_preview['parent']??0),'count'=>(int)($raw_preview['count']??0));
+			if(wp_json_encode($live)!==wp_json_encode($expected))return new WP_Error('stale','The taxonomy term changed after review, including its product usage count. Review the latest term state before deleting.');
+		}elseif('upsert'===$action){
+			$term_id=(int)($raw_preview['term_id']??0);
+			if($term_id){
+				$term=get_term($term_id,$tax);
+				if(!$term||is_wp_error($term))return new WP_Error('stale','The taxonomy term selected for update no longer exists.');
+				$live=array('name'=>$term->name,'slug'=>$term->slug,'description'=>$term->description,'parent'=>(int)$term->parent);
+				$expected=(array)($raw_preview['before']??array());
+				if(wp_json_encode($live)!==wp_json_encode($expected))return new WP_Error('stale','The taxonomy term changed after review. Refresh the proposal to avoid overwriting newer changes.');
+			}else{
+				$name=sanitize_text_field((string)($d['input']['name']??''));
+				if($name&&function_exists('get_term_by')){$existing=get_term_by('name',$name,$tax);if($existing&&!is_wp_error($existing))return new WP_Error('stale','A taxonomy term with this name appeared after review. Refresh the proposal instead of updating it implicitly.');}
+			}
+		}
+	}
 	if(preg_match('/customers-manage$/',$d['ability']??'')){
 		$action=$raw_preview['action']??'';$email=sanitize_email((string)($d['input']['email']??''));
 		if('create'===$action&&$email&&function_exists('get_user_by')&&get_user_by('email',$email))return new WP_Error('stale','A customer account with this email was created after the proposal. Refresh the task instead of applying the create plan to an existing account.');
