@@ -86,7 +86,7 @@ function hsm_review_create($ability,$input,$reason,$preview,$token='') {
 	$plan=array('version'=>2,'status'=>'pending','ability'=>$ability,'reason'=>sanitize_text_field($reason),'input'=>$input,'preview'=>hsm_review_server_snapshot($input,$preview),'input_hash'=>$hash,'created_at'=>current_time('mysql',true),'expires_at'=>gmdate('Y-m-d H:i:s',time()+(int)hsm_guard('token_ttl')));
 	$id=wp_insert_post(array('post_type'=>'hsm_review','post_status'=>'private','post_title'=>sanitize_text_field('Pending AI operation: '.$ability),'post_author'=>get_current_user_id(),'post_content'=>wp_slash(wp_json_encode($plan,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))),true);
 	if(is_wp_error($id))return 0;
-	update_post_meta($id,'_hsm_plan_hash',$hash);hsm_review_audit($id,'created',array('ability'=>$ability,'risk'=>$preview['risk']??'confirmation'));return (int)$id;
+	update_post_meta($id,'_hsm_plan_hash',$hash);$audit=hsm_review_audit($id,'created',array('ability'=>$ability,'risk'=>$preview['risk']??'confirmation'));if(is_wp_error($audit)||!$audit){hsm_review_update($id,array('audit_warning'=>'The review task was created, but its creation audit entry could not be saved.'));}return (int)$id;
 }
 function hsm_review_read($id) {
 	$p=get_post((int)$id);if(!$p||'hsm_review'!==$p->post_type)return null;
@@ -308,7 +308,7 @@ function hsm_review_approve($id) {
 	if($d['status']!=='pending')return new WP_Error('invalid_state','Only pending reviews can be approved.');
 	$saved=hsm_review_update($id,array('status'=>'approved','approved_by'=>get_current_user_id(),'approved_at'=>current_time('mysql',true)));
 	if(is_wp_error($saved)||!$saved)return new WP_Error('state_persist_failed','Approval was not confirmed because the review state could not be saved. Refresh the task before trying again.');
-	hsm_review_audit($id,'approved');return true;
+	$audit=hsm_review_audit($id,'approved');if(is_wp_error($audit)||!$audit)return new WP_Error('audit_persist_failed','The review was approved and its status was saved, but the audit entry could not be saved. Refresh the task; do not approve it again.');return true;
 }
 function hsm_review_rollback_partial($ability) {
 	if(!preg_match('/(?:product-upsert|products-bulk-update)$/',$ability)||empty($GLOBALS['hsm_undo'])||!function_exists('hsm_apply_undo'))return array('attempted'=>false,'ok'=>null,'details'=>array());
@@ -363,7 +363,7 @@ function hsm_review_execute($id) {
 			// keep the task non-actionable (normally still 'executing') and tell the operator to verify the store.
 			return new WP_Error('result_persist_failed','The store operation returned success, but its review result could not be saved. Do NOT retry this task blindly; verify the actual store state and review record first.');
 		}
-		hsm_review_audit($id,'executed');return $result;
+		$audit=hsm_review_audit($id,'executed');if(is_wp_error($audit)||!$audit)return new WP_Error('audit_persist_failed','The store operation completed and the result was saved, but the completion audit entry could not be saved. Do NOT retry this task; verify the store state and review record.');return $result;
 	} catch(Throwable $e) {
 		$failed_plan=isset($d)&&is_array($d)?$d:hsm_review_read($id);$rollback=hsm_review_rollback_partial($failed_plan['ability']??'');hsm_review_update($id,array('status'=>'execution_error','error'=>$e->getMessage(),'rollback'=>$rollback));hsm_review_audit($id,'execution_error',array('message'=>$e->getMessage(),'rollback'=>$rollback));return new WP_Error('execution_error',$e->getMessage().(!empty($rollback['attempted'])?($rollback['ok']?' Product changes were rolled back.':' Automatic rollback failed; inspect the store immediately.'):'' ));
 	} finally {unset($GLOBALS['hsm_review_execution']);delete_option($lock);}
@@ -373,7 +373,7 @@ function hsm_review_reject($id,$reason='') {
 	$d=hsm_review_read($id);if(!$d||$d['status']!=='pending')return new WP_Error('invalid_state','Only pending reviews can be rejected.');
 	$reason=sanitize_textarea_field($reason);$saved=hsm_review_update($id,array('status'=>'rejected','rejected_by'=>get_current_user_id(),'rejected_at'=>current_time('mysql',true),'rejection_reason'=>$reason));
 	if(is_wp_error($saved)||!$saved)return new WP_Error('state_persist_failed','Rejection was not confirmed because the review state could not be saved. Refresh the task before trying again.');
-	hsm_review_audit($id,'rejected',array('reason'=>$reason));return true;
+	$audit=hsm_review_audit($id,'rejected',array('reason'=>$reason));if(is_wp_error($audit)||!$audit)return new WP_Error('audit_persist_failed','The review was rejected and its status was saved, but the audit entry could not be saved. Refresh the task; do not repeat the rejection.');return true;
 }
 function hsm_review_menu(){if(!hsm_review_can_approve())return;add_submenu_page('woocommerce','AI 操作审核','AI 操作审核','manage_woocommerce','hsm-review','hsm_review_page');}
 add_action('admin_menu','hsm_review_menu',30);
