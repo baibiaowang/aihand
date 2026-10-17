@@ -42,13 +42,16 @@ hsm_ability( 'content-upsert', array(
 			if ( ! current_user_can( 'manage_options' ) || 'page' !== $type ) {
 				throw new HSM_Blocked( 'Only administrators can set the front/posts page, and only for pages.' );
 			}
-			hsm_confirm( $in, 'Change the site home page / blog page', array() );
 			hsm_undo_add( array( 'type' => 'option', 'name' => 'show_on_front', 'old' => get_option( 'show_on_front' ) ) );
 			hsm_undo_add( array( 'type' => 'option', 'name' => 'page_on_front', 'old' => get_option( 'page_on_front' ) ) );
 			hsm_undo_add( array( 'type' => 'option', 'name' => 'page_for_posts', 'old' => get_option( 'page_for_posts' ) ) );
 		}
 		// All content writes require owner approval, including draft creation and ordinary edits.
 		$review_preview = array( 'id' => $cur->ID ?? null, 'type' => $type, 'status' => $status ?? ( $cur->post_status ?? 'draft' ), 'title' => $in['title'] ?? ( $cur->post_title ?? '' ), 'input' => $in );
+		if ( ! empty( $in['set_as_front_page'] ) || ! empty( $in['set_as_posts_page'] ) ) {
+			$review_preview['site_page_options_snapshot'] = array( 'show_on_front' => get_option( 'show_on_front' ), 'page_on_front' => get_option( 'page_on_front' ), 'page_for_posts' => get_option( 'page_for_posts' ) );
+			$review_preview['site_page_changes'] = array( 'set_as_front_page' => ! empty( $in['set_as_front_page'] ), 'set_as_posts_page' => ! empty( $in['set_as_posts_page'] ) );
+		}
 		if ( ! empty( $cur ) ) {
 			$review_preview['post_snapshot'] = array( 'id' => (int) $cur->ID, 'status' => $cur->post_status, 'modified_gmt' => $cur->post_modified_gmt, 'content_hash' => hash( 'sha256', (string) $cur->post_content ), 'title' => $cur->post_title );
 		}
