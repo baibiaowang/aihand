@@ -219,6 +219,12 @@ function hsm_review_validate($d) {
 			if ( 'activate_theme' === $action && get_stylesheet() !== ( $expected['active_theme'] ?? '' ) ) return new WP_Error( 'stale', 'The active theme changed after review. Refresh the proposal before switching themes.' );
 		}
 	}
+	// Alt text is shared media metadata: do not overwrite edits made after the owner reviewed the proposal.
+	if ( preg_match( '/media-upload$/', $d['ability'] ?? '' ) && 'update_alt' === ( $d['input']['action'] ?? '' ) ) {
+		$attachment_id = (int) ( $raw_preview['id'] ?? $d['input']['id'] ?? 0 );
+		if ( ! $attachment_id || 'attachment' !== get_post_type( $attachment_id ) ) return new WP_Error( 'stale', 'The media attachment no longer exists. Refresh the proposal.' );
+		if ( ! array_key_exists( 'before_alt', $raw_preview ) || wp_json_encode( get_post_meta( $attachment_id, '_wp_attachment_image_alt', true ) ) !== wp_json_encode( $raw_preview['before_alt'] ) ) return new WP_Error( 'stale', 'The image alt text changed after review. Refresh the proposal before overwriting it.' );
+	}
 	if ( preg_match( '/content-upsert$/', $d['ability'] ?? '' ) && isset( $raw_preview['site_page_options_snapshot'] ) ) {
 		$expected = (array) $raw_preview['site_page_options_snapshot'];
 		foreach ( array( 'show_on_front', 'page_on_front', 'page_for_posts' ) as $option ) {
