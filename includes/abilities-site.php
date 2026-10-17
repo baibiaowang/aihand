@@ -54,6 +54,9 @@ hsm_ability( 'content-upsert', array(
 		}
 		if ( ! empty( $cur ) ) {
 			$review_preview['post_snapshot'] = array( 'id' => (int) $cur->ID, 'status' => $cur->post_status, 'modified_gmt' => $cur->post_modified_gmt, 'content_hash' => hash( 'sha256', (string) $cur->post_content ), 'title' => $cur->post_title );
+			if ( ! empty( $in['seo'] ) && is_array( $in['seo'] ) && function_exists( 'hsm_seo_review_snapshot' ) ) {
+				$review_preview['seo_snapshot'] = hsm_seo_review_snapshot( array( array_merge( array( 'id' => (int) $cur->ID ), $in['seo'] ) ) );
+			}
 		}
 		hsm_confirm( $in, ( ! empty( $cur ) ? 'Update ' . $type . ' "' . $cur->post_title . '"' : 'Create ' . $type . ' "' . ( $in['title'] ?? 'untitled' ) . '"' ), $review_preview );
 		if ( ! empty( $cur ) && 'publish' === $cur->post_status && $status && 'publish' !== $status ) {
