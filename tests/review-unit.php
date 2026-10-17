@@ -63,6 +63,15 @@ function sorted_ids($ids) {
 }
 
 $GLOBALS['review_mock_options'] = array();
+$first_data_lock = hsm_review_data_lock(54);
+check(is_array($first_data_lock) && !empty($first_data_lock['name']), 'first review data write should acquire its lock');
+$second_data_lock = hsm_review_data_lock(54);
+check(is_wp_error($second_data_lock) && $second_data_lock->get_error_code() === 'busy', 'concurrent review data write should fail closed while a lock is held');
+hsm_review_data_unlock($first_data_lock);
+$third_data_lock = hsm_review_data_lock(54);
+check(is_array($third_data_lock), 'review data lock should be available after its owner releases it');
+hsm_review_data_unlock($third_data_lock);
+
 $first_lock = hsm_review_transition_lock(55);
 check(is_array($first_lock) && !empty($first_lock['name']), 'first review transition should acquire its lock');
 $second_lock = hsm_review_transition_lock(55);
