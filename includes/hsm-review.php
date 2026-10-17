@@ -102,6 +102,29 @@ function hsm_review_audit($id,$event,$details=array()) {
 	$log=$d['audit']??array();$log[]=array('event'=>sanitize_key($event),'user'=>get_current_user_id(),'time'=>current_time('mysql',true),'details'=>$details);
 	return hsm_review_update($id,array('audit'=>$log));
 }
+function hsm_review_transition_lock($id) {
+	$name = 'hsm_review_transition_' . (int) $id;
+	$value = time() . ':' . wp_generate_uuid4();
+	if ( add_option( $name, $value, '', false ) ) return array( 'name' => $name, 'value' => $value );
+	$existing = (string) get_option( $name, '' );
+	$parts = explode( ':', $existing, 2 );
+	$started = (int) ( $parts[0] ?? 0 );
+	if ( $started <= 0 || time() - $started <= 300 ) return new WP_Error( 'busy', 'Another approval/rejection is changing this review. Refresh and try again.' );
+	// Remove only the exact stale lock value; never delete a replacement lock from another request.
+	global $wpdb;
+	$deleted = $wpdb->delete( $wpdb->options, array( 'option_name' => $name, 'option_value' => $existing ), array( '%s', '%s' ) );
+	if ( ! $deleted ) return new WP_Error( 'busy', 'Another approval/rejection is changing this review. Refresh and try again.' );
+	wp_cache_delete( $name, 'options' );
+	wp_cache_delete( 'notoptions', 'options' );
+	if ( ! add_option( $name, $value, '', false ) ) return new WP_Error( 'busy', 'Another approval/rejection is changing this review. Refresh and try again.' );
+	return array( 'name' => $name, 'value' => $value );
+}
+function hsm_review_transition_unlock($lock) {
+	if ( ! is_array( $lock ) || empty( $lock['name'] ) || ! isset( $lock['value'] ) ) return;
+	global $wpdb;
+	$deleted = $wpdb->delete( $wpdb->options, array( 'option_name' => $lock['name'], 'option_value' => $lock['value'] ), array( '%s', '%s' ) );
+	if ( $deleted ) { wp_cache_delete( $lock['name'], 'options' ); wp_cache_delete( 'notoptions', 'options' ); }
+}
 function hsm_review_can_approve(){return current_user_can('manage_woocommerce')||current_user_can('manage_options');}
 
 function hsm_review_validate($d) {
@@ -316,11 +339,15 @@ function hsm_review_validate($d) {
 }
 function hsm_review_approve($id) {
 	if(!hsm_review_can_approve())return new WP_Error('forbidden','Only store managers may approve AI operations.');
+	$transition_lock = hsm_review_transition_lock( $id );
+	if ( is_wp_error( $transition_lock ) ) return $transition_lock;
+	try {
 	$d=hsm_review_read($id);$v=hsm_review_validate($d);if(is_wp_error($v)){if($v->get_error_code()==='expired')hsm_review_update($id,array('status'=>'expired'));elseif($v->get_error_code()==='stale')hsm_review_update($id,array('status'=>'stale','stale_at'=>current_time('mysql',true),'stale_reason'=>$v->get_error_message()));return $v;}
 	if($d['status']!=='pending')return new WP_Error('invalid_state','Only pending reviews can be approved.');
 	$saved=hsm_review_update($id,array('status'=>'approved','approved_by'=>get_current_user_id(),'approved_at'=>current_time('mysql',true)));
 	if(is_wp_error($saved)||!$saved)return new WP_Error('state_persist_failed','Approval was not confirmed because the review state could not be saved. Refresh the task before trying again.');
 	$audit=hsm_review_audit($id,'approved');if(is_wp_error($audit)||!$audit)return new WP_Error('audit_persist_failed','The review was approved and its status was saved, but the audit entry could not be saved. Refresh the task; do not approve it again.');return true;
+	} finally { hsm_review_transition_unlock( $transition_lock ); }
 }
 function hsm_review_rollback_partial($ability) {
 	if(!preg_match('/(?:product-upsert|products-bulk-update)$/',$ability)||empty($GLOBALS['hsm_undo'])||!function_exists('hsm_apply_undo'))return array('attempted'=>false,'ok'=>null,'details'=>array());
@@ -382,10 +409,14 @@ function hsm_review_execute($id) {
 }
 function hsm_review_reject($id,$reason='') {
 	if(!hsm_review_can_approve())return new WP_Error('forbidden','Only store managers may reject AI operations.');
+	$transition_lock = hsm_review_transition_lock( $id );
+	if ( is_wp_error( $transition_lock ) ) return $transition_lock;
+	try {
 	$d=hsm_review_read($id);if(!$d||$d['status']!=='pending')return new WP_Error('invalid_state','Only pending reviews can be rejected.');
 	$reason=sanitize_textarea_field($reason);$saved=hsm_review_update($id,array('status'=>'rejected','rejected_by'=>get_current_user_id(),'rejected_at'=>current_time('mysql',true),'rejection_reason'=>$reason));
 	if(is_wp_error($saved)||!$saved)return new WP_Error('state_persist_failed','Rejection was not confirmed because the review state could not be saved. Refresh the task before trying again.');
 	$audit=hsm_review_audit($id,'rejected',array('reason'=>$reason));if(is_wp_error($audit)||!$audit)return new WP_Error('audit_persist_failed','The review was rejected and its status was saved, but the audit entry could not be saved. Refresh the task; do not repeat the rejection.');return true;
+	} finally { hsm_review_transition_unlock( $transition_lock ); }
 }
 function hsm_review_menu(){if(!hsm_review_can_approve())return;add_submenu_page('woocommerce','AI 操作审核','AI 操作审核','manage_woocommerce','hsm-review','hsm_review_page');}
 add_action('admin_menu','hsm_review_menu',30);
