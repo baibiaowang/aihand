@@ -93,14 +93,44 @@ function hsm_review_read($id) {
 	$d=json_decode($p->post_content,true);if(!is_array($d))return null;
 	$d['id']=(int)$p->ID;$d['user']=get_the_author_meta('user_login',$p->post_author)?:'unknown';return $d;
 }
+function hsm_review_data_lock($id) {
+	$name = 'hsm_review_data_' . (int) $id;
+	$value = time() . ':' . wp_generate_uuid4();
+	if ( add_option( $name, $value, '', false ) ) return array( 'name' => $name, 'value' => $value );
+	$existing = (string) get_option( $name, '' );
+	$parts = explode( ':', $existing, 2 );
+	$started = (int) ( $parts[0] ?? 0 );
+	if ( $started <= 0 || time() - $started <= 300 ) return new WP_Error( 'busy', 'The review record is being updated by another request. Refresh and try again.' );
+	global $wpdb;
+	$deleted = $wpdb->delete( $wpdb->options, array( 'option_name' => $name, 'option_value' => $existing ), array( '%s', '%s' ) );
+	if ( ! $deleted ) return new WP_Error( 'busy', 'The review record is being updated by another request. Refresh and try again.' );
+	wp_cache_delete( $name, 'options' ); wp_cache_delete( 'notoptions', 'options' );
+	if ( ! add_option( $name, $value, '', false ) ) return new WP_Error( 'busy', 'The review record is being updated by another request. Refresh and try again.' );
+	return array( 'name' => $name, 'value' => $value );
+}
+function hsm_review_data_unlock($lock) {
+	if ( ! is_array( $lock ) || empty( $lock['name'] ) || ! isset( $lock['value'] ) ) return;
+	global $wpdb;
+	$deleted = $wpdb->delete( $wpdb->options, array( 'option_name' => $lock['name'], 'option_value' => $lock['value'] ), array( '%s', '%s' ) );
+	if ( $deleted ) { wp_cache_delete( $lock['name'], 'options' ); wp_cache_delete( 'notoptions', 'options' ); }
+}
 function hsm_review_update($id,$data) {
-	$d=hsm_review_read($id);if(!$d)return false;foreach($data as $k=>$v)$d[$k]=$v;
-	return wp_update_post(array('ID'=>(int)$id,'post_content'=>wp_slash(wp_json_encode($d,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))),true);
+	$lock = hsm_review_data_lock( $id );
+	if ( is_wp_error( $lock ) ) return $lock;
+	try {
+		$d=hsm_review_read($id);if(!$d)return false;foreach($data as $k=>$v)$d[$k]=$v;
+		return wp_update_post(array('ID'=>(int)$id,'post_content'=>wp_slash(wp_json_encode($d,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))),true);
+	} finally { hsm_review_data_unlock( $lock ); }
 }
 function hsm_review_audit($id,$event,$details=array()) {
-	$d=hsm_review_read($id);if(!$d)return false;
-	$log=$d['audit']??array();$log[]=array('event'=>sanitize_key($event),'user'=>get_current_user_id(),'time'=>current_time('mysql',true),'details'=>$details);
-	return hsm_review_update($id,array('audit'=>$log));
+	$lock = hsm_review_data_lock( $id );
+	if ( is_wp_error( $lock ) ) return $lock;
+	try {
+		$d=hsm_review_read($id);if(!$d)return false;
+		$log=$d['audit']??array();$log[]=array('event'=>sanitize_key($event),'user'=>get_current_user_id(),'time'=>current_time('mysql',true),'details'=>$details);
+		$d['audit']=$log;
+		return wp_update_post(array('ID'=>(int)$id,'post_content'=>wp_slash(wp_json_encode($d,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))),true);
+	} finally { hsm_review_data_unlock( $lock ); }
 }
 function hsm_review_transition_lock($id) {
 	$name = 'hsm_review_transition_' . (int) $id;
