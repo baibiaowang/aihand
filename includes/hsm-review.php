@@ -126,7 +126,7 @@ function hsm_review_validate($d) {
 	}
 	$raw_preview=$d['preview']['raw_preview']??array();
 	// SEO proposals must not overwrite metadata changed by a person/plugin after approval.
-	if ( preg_match( '/seo-update$/', $d['ability'] ?? '' ) ) {
+	if ( preg_match( '/(?:seo-update|content-upsert)$/', $d['ability'] ?? '' ) && isset( $raw_preview['seo_snapshot'] ) ) {
 		foreach ( (array) ( $raw_preview['seo_snapshot'] ?? array() ) as $snapshot ) {
 			if ( ! empty( $snapshot['missing'] ) ) {
 				if ( 'term' === ( $snapshot['kind'] ?? '' ) ) {
