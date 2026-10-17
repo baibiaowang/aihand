@@ -5,12 +5,37 @@
  */
 define('ABSPATH', __DIR__ . '/');
 function add_action(...$args) {}
+function add_option($name, $value, $deprecated = '', $autoload = true) {
+    if (array_key_exists($name, $GLOBALS['review_mock_options'] ?? array())) return false;
+    $GLOBALS['review_mock_options'][$name] = $value;
+    return true;
+}
+function get_option($name, $default = false) { return $GLOBALS['review_mock_options'][$name] ?? $default; }
+function wp_cache_delete(...$args) {}
+function wp_generate_uuid4() { static $n = 0; return 'test-uuid-' . (++$n); }
+class ReviewTestWpdb {
+    public $options = 'wp_options';
+    public function delete($table, $where, $formats = array()) {
+        $name = $where['option_name'] ?? '';
+        if (($GLOBALS['review_mock_options'][$name] ?? null) !== ($where['option_value'] ?? null)) return 0;
+        unset($GLOBALS['review_mock_options'][$name]);
+        return 1;
+    }
+}
+$GLOBALS['wpdb'] = new ReviewTestWpdb();
 function absint($value) { return abs((int)$value); }
 function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags); }
 function hsm_canonical($value) { return $value; }
 function wc_get_product_id_by_sku($sku) { return array('SKU-EXISTING' => 42, 'VAR-EXISTING' => 84)[$sku] ?? 0; }
 function hsm_product_id($input) { return !empty($input['id']) ? (int)$input['id'] : wc_get_product_id_by_sku((string)($input['sku'] ?? '')); }
 class ReviewTestWpError { public function get_error_message() { return 'restore failed'; } }
+class WP_Error extends ReviewTestWpError {
+    private $code;
+    private $message;
+    public function __construct($code = '', $message = '') { $this->code = $code; $this->message = $message; }
+    public function get_error_code() { return $this->code; }
+    public function get_error_message() { return $this->message; }
+}
 function is_wp_error($value) { return $value instanceof ReviewTestWpError; }
 function hsm_apply_undo($entries) { return $GLOBALS['review_mock_undo_result'] ?? array(); }
 class ReviewTestProduct {
@@ -36,6 +61,16 @@ function sorted_ids($ids) {
     sort($ids);
     return $ids;
 }
+
+$GLOBALS['review_mock_options'] = array();
+$first_lock = hsm_review_transition_lock(55);
+check(is_array($first_lock) && !empty($first_lock['name']), 'first review transition should acquire its lock');
+$second_lock = hsm_review_transition_lock(55);
+check(is_wp_error($second_lock) && $second_lock->get_error_code() === 'busy', 'concurrent review transition should fail closed while a lock is held');
+hsm_review_transition_unlock($first_lock);
+$third_lock = hsm_review_transition_lock(55);
+check(is_array($third_lock), 'review transition lock should be available after its owner releases it');
+hsm_review_transition_unlock($third_lock);
 
 $input = array('id' => 12, 'sku' => 'SKU-EXISTING', 'confirm_token' => 'legacy-secret');
 $with_token_removed = array('id' => 12, 'sku' => 'SKU-EXISTING');
