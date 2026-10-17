@@ -219,6 +219,12 @@ function hsm_review_validate($d) {
 			if ( 'activate_theme' === $action && get_stylesheet() !== ( $expected['active_theme'] ?? '' ) ) return new WP_Error( 'stale', 'The active theme changed after review. Refresh the proposal before switching themes.' );
 		}
 	}
+	if ( preg_match( '/content-upsert$/', $d['ability'] ?? '' ) && isset( $raw_preview['site_page_options_snapshot'] ) ) {
+		$expected = (array) $raw_preview['site_page_options_snapshot'];
+		foreach ( array( 'show_on_front', 'page_on_front', 'page_for_posts' ) as $option ) {
+			if ( array_key_exists( $option, $expected ) && wp_json_encode( get_option( $option ) ) !== wp_json_encode( $expected[ $option ] ) ) return new WP_Error( 'stale', 'The site front page or posts page changed after review. Refresh the content proposal before changing site page settings.' );
+		}
+	}
 	if(!empty($raw_preview['post_snapshot']['id'])){
 		$post=get_post((int)$raw_preview['post_snapshot']['id']);$snap=$raw_preview['post_snapshot'];
 		if(!$post)return new WP_Error('stale','The content item no longer exists. Refresh the proposal.');
